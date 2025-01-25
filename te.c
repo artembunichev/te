@@ -21,6 +21,8 @@
 
 /* target file descriptor. */
 int fd;
+/* target file path. */
+char* fpth;
 
 /* input buffer. */
 char ibu[MXBFSZ];
@@ -121,6 +123,7 @@ rdf() {
 			}
 		}
 	}
+	if (arb == -1) die("error reading %s.\n", fpth);
 
 	dprintf(1, "%zu\n", trb);
 }
@@ -205,14 +208,16 @@ cmdloop() {
 			break;
 		}
 	}
+	if (arb == -1) die("error reading stdin.\n");
 }
 
 int
 main(int argc, char** argv) {
 	if (argc == 1) die("specify a file to edit.\n");
 
+	fpth = argv[1];
 	fd = open(argv[1], O_RDWR);
-	if (fd == -1) die("can't open file %s.\n", argv[1]);
+	if (fd == -1) die("can't open file %s.\n", fpth);
 
 	rdf();
 
