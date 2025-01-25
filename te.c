@@ -236,8 +236,11 @@ wrf() {
 
 	/*
 		Provide `O_TRUNC' in order to overwrite current contents.
+
+		And in case file was deleted during editing session, we
+	 	pass `O_CREAT' to create the file back.
 	*/
-	fd = open(fpth, O_WRONLY, O_TRUNC);
+	fd = open(fpth, O_CREAT | O_WRONLY | O_TRUNC, 0644);
 	if (fd == -1) die("can not open %s for writing.\n", fpth);
 
 	for (i = 0; i < linsl; ++i) {
