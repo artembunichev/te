@@ -153,7 +153,7 @@ rdf() {
 		/* since the added newline in the buffer, think it was read too. */
 		trb++;
 
-		dprintf(1, "newline appended.\n");
+		dprintf(2, "newline appended.\n");
 	}
 
 	dprintf(1, "%zu\n", trb);
