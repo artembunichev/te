@@ -94,6 +94,10 @@ rdf() {
 	int i;
 	/* totally read bytes. */
 	ssize_t trb;
+	/* last line. */
+	char* llin;
+	/* last line metadata. */
+	struct linmtdt* llmtd;
 
 	trb = 0;
 	lins = smalloc(EXLINS * sizeof(char*));
@@ -124,6 +128,25 @@ rdf() {
 		}
 	}
 	if (arb == -1) die("error reading %s.\n", fpth);
+
+	/*
+		append newline to the end of file if it doesn't exist.
+	*/
+	/* this means that a file doesn't have a newline in the end. */
+	if (!linsl) linsl = 1;
+	llin = lins[linsl-1];
+	llmtd = &(linmtdts[linsl-1]);
+	if (llin[llmtd->l-1] != '\n') {
+		if (linmtdts[linsl-1].l + 1 == llmtd->sz) {
+			llin = srealloc(llin, (llmtd->sz += 1));
+		}
+		llin[llmtd->l] = '\n';
+		llmtd->l++;
+		/* since the added newline in the buffer, think it was read too. */
+		trb++;
+
+		dprintf(1, "newline appended.\n");
+	}
 
 	dprintf(1, "%zu\n", trb);
 }
