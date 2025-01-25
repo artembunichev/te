@@ -106,6 +106,14 @@ rdf() {
 	linmtdts[0] = (struct linmtdt){0, 0};
 	linsl = 0;
 
+	/*
+		open file for both reading and writing to prevent an attempt
+		to open file we don't have a permisson to write to.
+		we won't make use of actual writing for this time.
+	*/
+	fd = open(fpth, O_RDWR);
+	if (fd == -1) die("can't open file %s.\n", fpth);
+
 	while ((arb = read(fd, &ibu, MXBFSZ)) > 0) {
 		trb += arb;
 
@@ -149,6 +157,8 @@ rdf() {
 	}
 
 	dprintf(1, "%zu\n", trb);
+
+	close(fd);
 }
 
 /* ordinary print. */
@@ -212,6 +222,35 @@ printl() {
 	}
 }
 
+/* write text buffer to the target file. */
+void
+wrf() {
+	/* actually written bytes. */
+	ssize_t awb;
+	/* totally written bytes. */
+	ssize_t twb;
+	/* line index. */
+	int i;
+
+	twb = 0;
+
+	/*
+		Provide `O_TRUNC' in order to overwrite current contents.
+	*/
+	fd = open(fpth, O_WRONLY, O_TRUNC);
+	if (fd == -1) die("can not open %s for writing.\n", fpth);
+
+	for (i = 0; i < linsl; ++i) {
+		awb = write(fd, lins[i], linmtdts[i].l);
+		if (awb == -1) die("error writing to %s.\n", fpth);
+		twb += awb;
+	}
+
+	dprintf(1, "%zu\n", twb);
+
+	close(fd);
+}
+
 /* main loop for reading command input. */
 void
 cmdloop() {
@@ -226,6 +265,9 @@ cmdloop() {
 		case 'l':
 			printl();
 			break;
+		case 'w':
+			wrf();
+			break;
 		case 'q':
 			quit();
 			break;
@@ -239,8 +281,6 @@ main(int argc, char** argv) {
 	if (argc == 1) die("specify a file to edit.\n");
 
 	fpth = argv[1];
-	fd = open(argv[1], O_RDWR);
-	if (fd == -1) die("can't open file %s.\n", fpth);
 
 	rdf();
 
