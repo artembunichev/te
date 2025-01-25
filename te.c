@@ -82,8 +82,6 @@ srealloc(void* p, size_t sz) {
 /* quit the editor. */
 void
 quit() {
-	free(lins);
-	free(linmtdts);
 	exit(0);
 }
 
