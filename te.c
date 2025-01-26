@@ -220,6 +220,12 @@ printl() {
 	}
 }
 
+/* print target file path. */
+void
+pfpth() {
+	dprintf(1, "%s\n", fpth);
+}
+
 /* write text buffer to the target file. */
 void
 wrf() {
@@ -257,6 +263,9 @@ void
 cmdloop() {
 	while ((arb = read(0, &ibu, MXBFSZ)) > 0) {
 		switch (ibu[0]) {
+		case 'f':
+			pfpth();
+			break;
 		case 'p':
 			printp();
 			break;
