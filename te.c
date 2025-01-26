@@ -238,6 +238,12 @@ pbyt() {
 	dprintf(1, "%zu\n", tsb);
 }
 
+/* print number of a last line in the buffer. */
+void
+plastnum() {
+	dprintf(1, "%zu\n", lnsl);
+}
+
 /* write text buffer to the target file. */
 void
 wrf() {
@@ -280,6 +286,9 @@ cmdloop() {
 			break;
 		case 'b':
 			pbyt();
+			break;
+		case '=':
+			plastnum();
 			break;
 		case 'p':
 			printp();
