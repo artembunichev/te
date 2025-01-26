@@ -14,7 +14,7 @@
 /* maximum input/output buffer size. */
 #define MXBFSZ 4096
 /* the number of lines to expand the lines array. */
-#define EXLINS 32
+#define EXLNS 32
 /* by how many character do expand the line. */
 #define EXLIN 64
 
@@ -29,21 +29,21 @@ char ibu[MXBFSZ];
 /* actually read bytes from input buffer. */
 ssize_t arb;
 
-/* the list of lines in the file. */
-char** lins;
-/* `lins' size. */
-size_t linssz;
-/* `lins' actual length. */
-size_t linsl;
-/* line's metadata. */
-struct linmtdt {
-	/* actual length. */
+/* a line node. */
+struct ln {
+	/* the value of a line. */
+	char* str;
+	/* its actual length. */
 	size_t l;
-	/* total size. */
+	/* the total size of it. */
 	size_t sz;
 };
-/* list of line metadatas. the index is the same as in `lins'. */
-struct linmtdt* linmtdts;
+/* list of line nodes. */
+struct ln* lns;
+/* actual number of lines in the buffer. */
+size_t lnsl;
+/* size of `lns'. */
+size_t lnssz;
 
 
 /* die and print the error message with program's name prefix. */
@@ -93,16 +93,13 @@ rdf() {
 	/* totally read bytes. */
 	ssize_t trb;
 	/* last line. */
-	char* llin;
-	/* last line metadata. */
-	struct linmtdt* llmtd;
+	struct ln* lln;
 
 	trb = 0;
-	lins = smalloc(EXLINS * sizeof(char*));
-	linssz = EXLINS;
-	linmtdts = smalloc(EXLINS * sizeof(struct linmtdt));
-	linmtdts[0] = (struct linmtdt){0, 0};
-	linsl = 0;
+	lns = smalloc(EXLNS * sizeof(struct ln));
+	lns[0] = (struct ln){0, 0, 0};
+	lnssz = EXLNS;
+	lnsl = 0;
 
 	/*
 		open file for both reading and writing to prevent an attempt
@@ -116,19 +113,18 @@ rdf() {
 		trb += arb;
 
 		for (i = 0; i < arb; ++i) {
-			if (linmtdts[linsl].l == linmtdts[linsl].sz) {
-				lins[linsl] = srealloc(lins[linsl], linmtdts[linsl].sz += EXLIN);
+			if (lns[lnsl].l == lns[lnsl].sz) {
+				lns[lnsl].str = srealloc(lns[lnsl].str, lns[lnsl].sz += EXLIN);
 			}
 	
-			lins[linsl][linmtdts[linsl].l] = ibu[i];
-			linmtdts[linsl].l++;
+			lns[lnsl].str[lns[lnsl].l] = ibu[i];
+			lns[lnsl].l++;
 
 			if (ibu[i] == '\n') {
-				++linsl;
-				if (linsl == linssz) {
-					lins = srealloc(lins, (linssz += EXLINS) * sizeof(char*));
-					linmtdts = srealloc(linmtdts, linssz * sizeof(struct linmtdt));
-					linmtdts[linsl] = (struct linmtdt){0, 0};
+				++lnsl;
+				if (lnsl == lnssz) {
+					lns = srealloc(lns, (lnssz += EXLNS) * sizeof(struct ln));
+					lns[lnsl] = (struct ln){0, 0, 0};
 				}
 			}
 		}
@@ -139,15 +135,14 @@ rdf() {
 		append newline to the end of file if it doesn't exist.
 	*/
 	/* this means that a file doesn't have a newline in the end. */
-	if (!linsl) linsl = 1;
-	llin = lins[linsl-1];
-	llmtd = &(linmtdts[linsl-1]);
-	if (llin[llmtd->l-1] != '\n') {
-		if (linmtdts[linsl-1].l + 1 == llmtd->sz) {
-			llin = srealloc(llin, (llmtd->sz += 1));
+	if (!lnsl) lnsl = 1;
+	lln = &(lns[lnsl-1]);
+	if (lln->str[lln->l-1] != '\n') {
+		if (lns[lnsl-1].l + 1 == lln->sz) {
+			lln->str = srealloc(lln->str, (lln->sz += 1));
 		}
-		llin[llmtd->l] = '\n';
-		llmtd->l++;
+		lln->str[lln->l] = '\n';
+		lln->l++;
 		/* since the added newline in the buffer, think it was read too. */
 		trb++;
 
@@ -164,8 +159,8 @@ void
 printp() {
 	size_t i;
 
-	for (i = 0; i < linsl; ++i) {
-		write(1, lins[i], linmtdts[i].l);
+	for (i = 0; i < lnsl; ++i) {
+		write(1, lns[i].str, lns[i].l);
 	}
 }
 
@@ -174,9 +169,9 @@ void
 printn() {
 	size_t i;
 
-	for (i = 0; i < linsl; ++i) {
+	for (i = 0; i < lnsl; ++i) {
 		dprintf(1, "%-2zu  ", i+1);
-		write(1, lins[i], linmtdts[i].l);
+		write(1, lns[i].str, lns[i].l);
 	}
 }
 
@@ -188,8 +183,8 @@ printl() {
 	/* character index within the line. */
 	size_t j;
 
-	for (i = 0; i < linsl; ++i) {
-		for (j = 0; j < linmtdts[i].l; ++j) {
+	for (i = 0; i < lnsl; ++i) {
+		for (j = 0; j < lns[i].l; ++j) {
 			char* s;
 			/* actual length of printed sequence. */
 			int l;
@@ -197,7 +192,7 @@ printl() {
 			s = smalloc(2);
 			l = 1;
 
-			switch (lins[i][j]) {
+			switch (lns[i].str[j]) {
 			case '\n':
 				strcpy(s, "$\n");
 				l = 2;
@@ -211,7 +206,7 @@ printl() {
 				l = 2;
 				break;
 			default:
-				s = strcpy(s, &lins[i][j]);
+				s = strcpy(s, &(lns[i].str[j]));
 			}
 
 			write(1, s, l);
@@ -236,8 +231,8 @@ pbyt() {
 
 	tsb = 0;
 
-	for (i = 0; i < linsl; ++i) {
-		tsb += linmtdts[i].l;
+	for (i = 0; i < lnsl; ++i) {
+		tsb += lns[i].l;
 	}
 
 	dprintf(1, "%zu\n", tsb);
@@ -264,8 +259,8 @@ wrf() {
 	fd = open(fpth, O_CREAT | O_WRONLY | O_TRUNC, 0644);
 	if (fd == -1) die("can not open %s for writing.\n", fpth);
 
-	for (i = 0; i < linsl; ++i) {
-		awb = write(fd, lins[i], linmtdts[i].l);
+	for (i = 0; i < lnsl; ++i) {
+		awb = write(fd, lns[i].str, lns[i].l);
 		if (awb == -1) die("error writing to %s.\n", fpth);
 		twb += awb;
 	}
