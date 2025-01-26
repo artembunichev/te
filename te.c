@@ -32,15 +32,15 @@ ssize_t arb;
 /* the list of lines in the file. */
 char** lins;
 /* `lins' size. */
-int linssz;
+size_t linssz;
 /* `lins' actual length. */
-int linsl;
+size_t linsl;
 /* line's metadata. */
 struct linmtdt {
 	/* actual length. */
-	int l;
+	size_t l;
 	/* total size. */
-	int sz;
+	size_t sz;
 };
 /* list of line metadatas. the index is the same as in `lins'. */
 struct linmtdt* linmtdts;
@@ -162,7 +162,7 @@ rdf() {
 /* ordinary print. */
 void
 printp() {
-	int i;
+	size_t i;
 
 	for (i = 0; i < linsl; ++i) {
 		write(1, lins[i], linmtdts[i].l);
@@ -172,10 +172,10 @@ printp() {
 /* print with line numbers. */
 void
 printn() {
-	int i;
+	size_t i;
 
 	for (i = 0; i < linsl; ++i) {
-		dprintf(1, "%-2d  ", i+1);
+		dprintf(1, "%-2zu  ", i+1);
 		write(1, lins[i], linmtdts[i].l);
 	}
 }
@@ -184,9 +184,9 @@ printn() {
 void
 printl() {
 	/* line index. */
-	int i;
+	size_t i;
 	/* character index within the line. */
-	int j;
+	size_t j;
 
 	for (i = 0; i < linsl; ++i) {
 		for (j = 0; j < linmtdts[i].l; ++j) {
@@ -224,6 +224,23 @@ printl() {
 void
 pfpth() {
 	dprintf(1, "%s\n", fpth);
+}
+
+/* print current number of bytes in buffer. */
+void
+pbyt() {
+	/* line index. */
+	size_t i;
+	/* totally stored bytes. */
+	size_t tsb;
+
+	tsb = 0;
+
+	for (i = 0; i < linsl; ++i) {
+		tsb += linmtdts[i].l;
+	}
+
+	dprintf(1, "%zu\n", tsb);
 }
 
 /* write text buffer to the target file. */
@@ -265,6 +282,9 @@ cmdloop() {
 		switch (ibu[0]) {
 		case 'f':
 			pfpth();
+			break;
+		case 'b':
+			pbyt();
 			break;
 		case 'p':
 			printp();
