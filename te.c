@@ -314,6 +314,8 @@ parsecmd() {
 		case ',': {
 			long nxaddr;
 
+			if (addrn > 1) return 1;
+
 			*ibup++;
 			nxaddr = strtol(ibup, &ibup, 10);
 
