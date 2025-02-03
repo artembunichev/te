@@ -26,6 +26,7 @@
 	if (!addrn) addrs[addrn++] = caddr;\
 	if (addrn == 1) addrs[addrn++] = caddr;\
 }
+#define CKADDRS(Z) if (ckaddrs(Z)) return 1;
 
 
 /* target file descriptor. */
@@ -299,6 +300,19 @@ wrf() {
 	close(fd);
 }
 
+/*
+	check addresses for validity.
+
+	`zer' - if address `0' is allowed.
+*/
+int
+ckaddrs(char zer) {
+	if (zer && (!addrs[0] || !addrs[1])) return 1;
+	if (addrs[1] < addrs[0]) return 1;
+	if (addrs[0] > lnsl || addrs[1] > lnsl) return 1;
+	return 0;
+}
+
 /* parse input and return number >0 if error occurs. */
 int
 parsecmd() {
@@ -338,16 +352,19 @@ parsecmd() {
 		case 'p':
 			LAST();
 			DFLTADDR();
+			CKADDRS(0);
 			printp();
 			return 0;
 		case 'n':
 			LAST();
 			DFLTADDR();
+			CKADDRS(0);
 			printn();
 			return 0;
 		case 'l':
 			LAST();
 			DFLTADDR();
+			CKADDRS(0);
 			printl();
 			return 0;
 		case 'w':
