@@ -21,7 +21,7 @@
 
 #define FIRST() if (!first) return 1;
 #define LAST() if (*(ibup+1) != '\n') return 1;
-#define FANDLAST() FIRST(); LAST();
+#define SINGLE() FIRST(); LAST();
 #define DFLTADDR() {\
 	if (!addrn) addrs[addrn++] = caddr;\
 	if (addrn == 1) addrs[addrn++] = caddr;\
@@ -357,15 +357,15 @@ parsecmd() {
 			break;
 		}
 		case 'f':
-			FANDLAST();
+			SINGLE();
 			pfpth();
 			return 0;
 		case 'b':
-			FANDLAST();
+			SINGLE();
 			pbyt();
 			return 0;
 		case '=':
-			FANDLAST();
+			SINGLE();
 			plastnum();
 			return 0;
 		case 'p':
@@ -387,11 +387,11 @@ parsecmd() {
 			printl();
 			return 0;
 		case 'w':
-			FANDLAST();
+			SINGLE();
 			wrf();
 			return 0;
 		case 'q':
-			FANDLAST();
+			SINGLE();
 			quit();
 			return 0;
 		case '\n':
