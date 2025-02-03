@@ -9,6 +9,7 @@
 #include<unistd.h>
 #include<string.h>
 #include<stdio.h>
+#include<errno.h>
 
 
 /* maximum input/output buffer size. */
@@ -18,6 +19,14 @@
 /* by how many character do expand the line. */
 #define EXLIN 64
 
+#define FIRST() if (!first) return 1;
+#define LAST() if (*(ibup+1) != '\n') return 1;
+#define FANDLAST() FIRST(); LAST();
+#define DFLTADDR() {\
+	if (!addrn) addrs[addrn++] = caddr;\
+	if (addrn == 1) addrs[addrn++] = caddr;\
+}
+
 
 /* target file descriptor. */
 int fd;
@@ -26,6 +35,8 @@ char* fpth;
 
 /* input buffer. */
 char ibu[MXBFSZ];
+/* input buffer pointer. */
+char* ibup;
 /* actually read bytes from input buffer. */
 ssize_t arb;
 
@@ -44,6 +55,17 @@ struct ln* lns;
 size_t lnsl;
 /* size of `lns'. */
 size_t lnssz;
+
+/* current line address. */
+size_t caddr;
+
+/* specified (input) addresses. */
+size_t addrs[2];
+/* current number of addresses specified. */
+int addrn;
+
+/* if current examined character is first. */
+char first;
 
 
 /* die and print the error message with program's name prefix. */
@@ -149,6 +171,8 @@ rdf() {
 		dprintf(2, "newline appended.\n");
 	}
 
+	caddr = lnsl;
+
 	dprintf(1, "%zu\n", trb);
 
 	close(fd);
@@ -158,8 +182,7 @@ rdf() {
 void
 printp() {
 	size_t i;
-
-	for (i = 0; i < lnsl; ++i) {
+	for (i = addrs[0]-1; i < addrs[1]; ++i) {
 		write(1, lns[i].str, lns[i].l);
 	}
 }
@@ -169,7 +192,7 @@ void
 printn() {
 	size_t i;
 
-	for (i = 0; i < lnsl; ++i) {
+	for (i = addrs[0]-1; i < addrs[1]; ++i) {
 		dprintf(1, "%-2zu  ", i+1);
 		write(1, lns[i].str, lns[i].l);
 	}
@@ -183,7 +206,7 @@ printl() {
 	/* character index within the line. */
 	size_t j;
 
-	for (i = 0; i < lnsl; ++i) {
+	for (i = addrs[0]-1; i < addrs[1]; ++i) {
 		for (j = 0; j < lns[i].l; ++j) {
 			char* s;
 			/* actual length of printed sequence. */
@@ -276,35 +299,84 @@ wrf() {
 	close(fd);
 }
 
-/* main loop for reading command input. */
+/* parse input and return number >0 if error occurs. */
+int
+parsecmd() {
+	addrs[0] = addrs[1] = addrn = 0;
+	first = 1;
+
+	for (;; first = 0) {
+		switch(*ibup) {
+		case '0': case '1': case '2': case '3': case '4':
+		case '5': case '6': case '7': case '8': case '9':
+			caddr = addrs[addrn++] = strtol(ibup, &ibup, 10);
+			break;
+		case ',': {
+			long nxaddr;
+
+			*ibup++;
+			nxaddr = strtol(ibup, &ibup, 10);
+
+			if (!addrn) addrs[addrn++] = caddr;
+			caddr = addrs[addrn++] = errno ? lnsl : nxaddr;
+			break;
+		}
+		case 'f':
+			FANDLAST();
+			pfpth();
+			return 0;
+		case 'b':
+			FANDLAST();
+			pbyt();
+			return 0;
+		case '=':
+			FANDLAST();
+			plastnum();
+			return 0;
+		case 'p':
+			LAST();
+			DFLTADDR();
+			printp();
+			return 0;
+		case 'n':
+			LAST();
+			DFLTADDR();
+			printn();
+			return 0;
+		case 'l':
+			LAST();
+			DFLTADDR();
+			printl();
+			return 0;
+		case 'w':
+			FANDLAST();
+			wrf();
+			return 0;
+		case 'q':
+			FANDLAST();
+			quit();
+			return 0;
+		case '\n':
+			addrs[0] = addrs[1] = caddr;
+			printp();
+			return 0;
+		default:
+			return 1;
+		}
+	}
+}
+
+/* main loop for reading input command. */
 void
 cmdloop() {
-	while ((arb = read(0, &ibu, MXBFSZ)) > 0) {
-		switch (ibu[0]) {
-		case 'f':
-			pfpth();
-			break;
-		case 'b':
-			pbyt();
-			break;
-		case '=':
-			plastnum();
-			break;
-		case 'p':
-			printp();
-			break;
-		case 'n':
-			printn();
-			break;
-		case 'l':
-			printl();
-			break;
-		case 'w':
-			wrf();
-			break;
-		case 'q':
-			quit();
-			break;
+	while (1) {
+		arb = read(0, &ibu, MXBFSZ);
+		if (!arb) quit();
+		if (arb == -1) die("can not read from stdin.\n");
+
+		ibup = &ibu[0];
+		if (parsecmd()) {
+			dprintf(1, "?\n");
 		}
 	}
 	if (arb == -1) die("error reading stdin.\n");
