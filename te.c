@@ -300,6 +300,21 @@ wrf() {
 	close(fd);
 }
 
+/* read address number from input. */
+long
+getaddr() {
+	/* previous input buffer pointer. */
+	char* pibup;
+	long addr;
+
+	pibup = ibup;
+
+	addr = strtol(ibup, &ibup, 10);
+	if (ibup == pibup) return -1;
+
+	return addr;
+}
+
 /*
 	check addresses for validity.
 
@@ -307,7 +322,7 @@ wrf() {
 */
 int
 ckaddrs(char zer) {
-	if (zer && (!addrs[0] || !addrs[1])) return 1;
+	if (!zer && (!addrs[0] || !addrs[1])) return 1;
 	if (addrs[1] < addrs[0]) return 1;
 	if (addrs[0] > lnsl || addrs[1] > lnsl) return 1;
 	return 0;
@@ -322,19 +337,23 @@ parsecmd() {
 	for (;; first = 0) {
 		switch(*ibup) {
 		case '0': case '1': case '2': case '3': case '4':
-		case '5': case '6': case '7': case '8': case '9':
-			caddr = addrs[addrn++] = strtol(ibup, &ibup, 10);
+		case '5': case '6': case '7': case '8': case '9': {
+			long addr;
+
+			if ((addr = getaddr()) == -1) return 1;
+			caddr = addrs[addrn++] = addr;
 			break;
+		}
 		case ',': {
 			long nxaddr;
 
 			if (addrn > 1) return 1;
+			if (!addrn) addrs[addrn++] = caddr;
 
 			*ibup++;
-			nxaddr = strtol(ibup, &ibup, 10);
+			nxaddr = getaddr();
 
-			if (!addrn) addrs[addrn++] = caddr;
-			caddr = addrs[addrn++] = errno ? lnsl : nxaddr;
+			caddr = addrs[addrn++] = nxaddr == -1 ? lnsl : nxaddr;
 			break;
 		}
 		case 'f':
@@ -377,6 +396,7 @@ parsecmd() {
 			return 0;
 		case '\n':
 			addrs[0] = addrs[1] = caddr;
+			CKADDRS(0);
 			printp();
 			return 0;
 		default:
