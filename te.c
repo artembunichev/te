@@ -26,7 +26,9 @@
 	if (!addrn) addrs[addrn++] = caddr;\
 	if (addrn == 1) addrs[addrn++] = caddr;\
 }
-#define CKADDRS(Z) if (ckaddrs(Z)) return 1;
+#define SCADDR(X) do {pcaddr = caddr; caddr = (X);} while (0)
+#define RCADDR() caddr = pcaddr;
+#define CKADDRS(Z) if (ckaddrs(Z)) { RCADDR(); return 1; }
 
 
 /* target file descriptor. */
@@ -59,6 +61,8 @@ size_t lnssz;
 
 /* current line address. */
 size_t caddr;
+/* previous valid current address. */
+size_t pcaddr;
 
 /* specified (input) addresses. */
 size_t addrs[2];
@@ -172,7 +176,8 @@ rdf() {
 		dprintf(2, "newline appended.\n");
 	}
 
-	caddr = lnsl;
+	/* initializing addresses, that's why not `SCADDR'. */
+	pcaddr = caddr = lnsl;
 
 	dprintf(1, "%zu\n", trb);
 
@@ -341,7 +346,7 @@ parsecmd() {
 			long addr;
 
 			if ((addr = getaddr()) == -1) return 1;
-			caddr = addrs[addrn++] = addr;
+			SCADDR(addrs[addrn++] = addr);
 			break;
 		}
 		case ',': {
@@ -353,7 +358,7 @@ parsecmd() {
 			*ibup++;
 			nxaddr = getaddr();
 
-			caddr = addrs[addrn++] = nxaddr == -1 ? lnsl : nxaddr;
+			SCADDR(addrs[addrn++] = nxaddr == -1 ? lnsl : nxaddr);
 			break;
 		}
 		case 'f':
@@ -395,6 +400,8 @@ parsecmd() {
 			quit();
 			return 0;
 		case '\n':
+			if (first) SCADDR(caddr+1);
+
 			addrs[0] = addrs[1] = caddr;
 			CKADDRS(0);
 			printp();
