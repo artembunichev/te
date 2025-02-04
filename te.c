@@ -24,11 +24,12 @@
 #define SINGLE() FIRST(); LAST();
 #define DFLTADDR() {\
 	if (!addrn) addrs[addrn++] = caddr;\
-	if (addrn == 1) addrs[addrn++] = caddr;\
+	if (addrn == 1) addrs[addrn++] = addrs[0];\
 }
 #define SCADDR(X) do {pcaddr = caddr; caddr = (X);} while (0)
 #define RCADDR() caddr = pcaddr;
 #define CKADDRS(Z) if (ckaddrs(Z)) { RCADDR(); return 1; }
+#define CKMARK() if (*ibup < 'a' || *ibup > 'z') return 1;
 
 
 /* target file descriptor. */
@@ -51,6 +52,8 @@ struct ln {
 	size_t l;
 	/* the total size of it. */
 	size_t sz;
+	/* line's mark, by which it may be referenced to. */
+	char mark;
 };
 /* list of pointers to line nodes. */
 struct ln** lns;
@@ -353,8 +356,31 @@ delln() {
 	SCADDR(addrs[0] > lnsl ? lnsl : addrs[0]);
 }
 
-/* get single address from input (next one). */
+/* mark line. */
 void
+markln() {
+	/*
+		we assume that `ibup' points to actual mark that
+		has been validated.
+	*/
+	lns[caddr-1]->mark = *ibup;
+}
+
+/* get line address for line marked by character under `ibup'. */
+size_t
+getmarkaddr() {
+	int i;
+
+	for (i = 0; i < lnsl; ++i) {
+		/* we're expecting a valid mark value here. */
+		if (lns[i]->mark == *ibup) return i+1;
+	}
+
+	return -1;
+}
+
+/* get single address from input (next one). */
+int
 getnxaddr() {
 	switch (*ibup) {
 	case '0': case '1': case '2': case '3': case '4':
@@ -365,11 +391,27 @@ getnxaddr() {
 	case '$':
 		addrs[addrn++] = *ibup++ == '.' ? caddr : lnsl;
 		break;
+	case '\'': {
+		/* mark address. */
+		size_t maddr;
+
+		ibup++;
+		CKMARK();
+		maddr = getmarkaddr();
+
+		if (maddr == -1) return 1;
+		addrs[addrn++] = maddr;
+
+		ibup++;
+		break;
 	}
+	}
+
+	return 0;
 }
 
-/* get address range. it can *not* fail. */
-void
+/* get address range. */
+int
 getrng() {
 	/* previous input buffer pointer. */
 	char* pibup;
@@ -385,7 +427,7 @@ getrng() {
 	com = 0;
 
 	while (addrn < 2) {
-		getnxaddr();
+		if (getnxaddr()) return 1;
 		if (ibup != pibup) first = 0;
 		switch (*ibup) {
 		case ',':
@@ -398,9 +440,11 @@ getrng() {
 			break;
 		default:
 			if (com == 2 && addrn == 1) addrs[addrn++] = lnsl;
-			return;
+			return 0;
 		}
 	}
+
+	return 0;
 }
 
 /*
@@ -422,7 +466,7 @@ parsecmd() {
 	addrs[0] = addrs[1] = addrn = 0;
 	first = 1;
 
-	getrng();
+	if (getrng()) return 1;
 
 	for (;; first = 0) {
 		switch(*ibup) {
@@ -461,6 +505,14 @@ parsecmd() {
 			DFLTADDR();
 			CKADDRS(0);
 			delln();
+			return 0;
+		case 'k':
+			DFLTADDR();
+			CKADDRS(0);
+			SCADDR(addrs[1]);
+			ibup++;
+			CKMARK();
+			markln();
 			return 0;
 		case 'w':
 			SINGLE();
