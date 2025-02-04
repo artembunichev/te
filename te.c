@@ -305,19 +305,54 @@ wrf() {
 	close(fd);
 }
 
-/* read address number from input. */
-long
-getaddr() {
+/* get single address from input (next one). */
+void
+getnxaddr() {
+	switch (*ibup) {
+	case '0': case '1': case '2': case '3': case '4':
+	case '5': case '6': case '7': case '8': case '9':
+		addrs[addrn++] = strtol(ibup, &ibup, 10);
+		break;
+	case '.':
+	case '$':
+		addrs[addrn++] = *ibup++ == '.' ? caddr : lnsl;
+		break;
+	}
+}
+
+/* get address range. it can *not* fail. */
+void
+getrng() {
 	/* previous input buffer pointer. */
 	char* pibup;
-	long addr;
+	/*
+		if it is a comma-delimited range.
+		`0' - no.
+		`1' - yes.
+		`2' - yes and comma is first character.
+	*/
+	int com;
 
 	pibup = ibup;
+	com = 0;
 
-	addr = strtol(ibup, &ibup, 10);
-	if (ibup == pibup) return -1;
-
-	return addr;
+	while (addrn < 2) {
+		getnxaddr();
+		if (ibup != pibup) first = 0;
+		switch (*ibup) {
+		case ',':
+			com = 1;
+			if (first) {
+				com = 2;
+				addrs[addrn++] = 1;
+			}
+			ibup++;
+			break;
+		default:
+			if (com == 2 && addrn == 1) addrs[addrn++] = lnsl;
+			return;
+		}
+	}
 }
 
 /*
@@ -339,28 +374,10 @@ parsecmd() {
 	addrs[0] = addrs[1] = addrn = 0;
 	first = 1;
 
+	getrng();
+
 	for (;; first = 0) {
 		switch(*ibup) {
-		case '0': case '1': case '2': case '3': case '4':
-		case '5': case '6': case '7': case '8': case '9': {
-			long addr;
-
-			if ((addr = getaddr()) == -1) return 1;
-			SCADDR(addrs[addrn++] = addr);
-			break;
-		}
-		case ',': {
-			long nxaddr;
-
-			if (addrn > 1) return 1;
-			if (!addrn) addrs[addrn++] = caddr;
-
-			ibup++;
-			nxaddr = getaddr();
-
-			SCADDR(addrs[addrn++] = nxaddr == -1 ? lnsl : nxaddr);
-			break;
-		}
 		case 'f':
 			SINGLE();
 			pfpth();
@@ -402,8 +419,11 @@ parsecmd() {
 		case '\n':
 			if (first) SCADDR(caddr+1);
 
-			addrs[0] = addrs[1] = caddr;
+			if (!addrn) addrs[addrn++] = caddr;
+			if (addrn == 1) addrs[addrn] = addrs[0];
+dprintf(1, "[0]: %zu, [1]: %zu.\n", addrs[0], addrs[1]);
 			CKADDRS(0);
+			SCADDR(addrs[1]);
 			printp();
 			return 0;
 		default:
