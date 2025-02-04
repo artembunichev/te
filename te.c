@@ -52,8 +52,8 @@ struct ln {
 	/* the total size of it. */
 	size_t sz;
 };
-/* list of line nodes. */
-struct ln* lns;
+/* list of pointers to line nodes. */
+struct ln** lns;
 /* actual number of lines in the buffer. */
 size_t lnsl;
 /* size of `lns'. */
@@ -106,10 +106,31 @@ srealloc(void* p, size_t sz) {
 	return ret;
 }
 
+/* safe calloc. */
+void*
+scalloc(size_t n, size_t s) {
+	void* ret;
+
+	ret = calloc(n, s);
+	if (!ret) die("can not alloc %zu objects %zu bytes each.\n", n, s);
+
+	return ret;
+}
+
 /* quit the editor. */
 void
 quit() {
 	exit(0);
+}
+
+/* initialize `ln' structs after reallocating `lns'. `f' - start index. */
+void
+initlnmem(int f) {
+	int i;
+
+	for (i = 0; i < EXLNS; ++i) {
+		lns[f+i] = scalloc(1, sizeof(struct ln));
+	}
 }
 
 /* read the target file into memory. */
@@ -123,8 +144,8 @@ rdf() {
 	struct ln* lln;
 
 	trb = 0;
-	lns = smalloc(EXLNS * sizeof(struct ln));
-	lns[0] = (struct ln){0, 0, 0};
+	lns = smalloc(EXLNS * sizeof(struct ln*));
+	initlnmem(lnsl);
 	lnssz = EXLNS;
 	lnsl = 0;
 
@@ -140,18 +161,18 @@ rdf() {
 		trb += arb;
 
 		for (i = 0; i < arb; ++i) {
-			if (lns[lnsl].l == lns[lnsl].sz) {
-				lns[lnsl].str = srealloc(lns[lnsl].str, lns[lnsl].sz += EXLIN);
+			if (lns[lnsl]->l == lns[lnsl]->sz) {
+				lns[lnsl]->str = srealloc(lns[lnsl]->str, lns[lnsl]->sz += EXLIN);
 			}
 	
-			lns[lnsl].str[lns[lnsl].l] = ibu[i];
-			lns[lnsl].l++;
+			lns[lnsl]->str[lns[lnsl]->l] = ibu[i];
+			lns[lnsl]->l++;
 
 			if (ibu[i] == '\n') {
 				++lnsl;
 				if (lnsl == lnssz) {
-					lns = srealloc(lns, (lnssz += EXLNS) * sizeof(struct ln));
-					lns[lnsl] = (struct ln){0, 0, 0};
+					lns = srealloc(lns, (lnssz += EXLNS) * sizeof(struct ln*));
+					initlnmem(lnsl);
 				}
 			}
 		}
@@ -163,9 +184,9 @@ rdf() {
 	*/
 	/* this means that a file doesn't have a newline in the end. */
 	if (!lnsl) lnsl = 1;
-	lln = &(lns[lnsl-1]);
+	lln = lns[lnsl-1];
 	if (lln->str[lln->l-1] != '\n') {
-		if (lns[lnsl-1].l + 1 == lln->sz) {
+		if (lns[lnsl-1]->l + 1 == lln->sz) {
 			lln->str = srealloc(lln->str, (lln->sz += 1));
 		}
 		lln->str[lln->l] = '\n';
@@ -189,7 +210,7 @@ void
 printp() {
 	size_t i;
 	for (i = addrs[0]-1; i < addrs[1]; ++i) {
-		write(1, lns[i].str, lns[i].l);
+		write(1, lns[i]->str, lns[i]->l);
 	}
 }
 
@@ -200,7 +221,7 @@ printn() {
 
 	for (i = addrs[0]-1; i < addrs[1]; ++i) {
 		dprintf(1, "%-2zu  ", i+1);
-		write(1, lns[i].str, lns[i].l);
+		write(1, lns[i]->str, lns[i]->l);
 	}
 }
 
@@ -213,7 +234,7 @@ printl() {
 	size_t j;
 
 	for (i = addrs[0]-1; i < addrs[1]; ++i) {
-		for (j = 0; j < lns[i].l; ++j) {
+		for (j = 0; j < lns[i]->l; ++j) {
 			char* s;
 			/* actual length of printed sequence. */
 			int l;
@@ -221,7 +242,7 @@ printl() {
 			s = smalloc(2);
 			l = 1;
 
-			switch (lns[i].str[j]) {
+			switch (lns[i]->str[j]) {
 			case '\n':
 				strcpy(s, "$\n");
 				l = 2;
@@ -235,7 +256,7 @@ printl() {
 				l = 2;
 				break;
 			default:
-				s = strcpy(s, &(lns[i].str[j]));
+				s = strcpy(s, &(lns[i]->str[j]));
 			}
 
 			write(1, s, l);
@@ -261,7 +282,7 @@ pbyt() {
 	tsb = 0;
 
 	for (i = 0; i < lnsl; ++i) {
-		tsb += lns[i].l;
+		tsb += lns[i]->l;
 	}
 
 	dprintf(1, "%zu\n", tsb);
@@ -295,7 +316,7 @@ wrf() {
 	if (fd == -1) die("can not open %s for writing.\n", fpth);
 
 	for (i = 0; i < lnsl; ++i) {
-		awb = write(fd, lns[i].str, lns[i].l);
+		awb = write(fd, lns[i]->str, lns[i]->l);
 		if (awb == -1) die("error writing to %s.\n", fpth);
 		twb += awb;
 	}
@@ -421,7 +442,6 @@ parsecmd() {
 
 			if (!addrn) addrs[addrn++] = caddr;
 			if (addrn == 1) addrs[addrn] = addrs[0];
-dprintf(1, "[0]: %zu, [1]: %zu.\n", addrs[0], addrs[1]);
 			CKADDRS(0);
 			SCADDR(addrs[1]);
 			printp();
