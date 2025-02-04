@@ -355,7 +355,7 @@ parsecmd() {
 			if (addrn > 1) return 1;
 			if (!addrn) addrs[addrn++] = caddr;
 
-			*ibup++;
+			ibup++;
 			nxaddr = getaddr();
 
 			SCADDR(addrs[addrn++] = nxaddr == -1 ? lnsl : nxaddr);
