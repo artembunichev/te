@@ -326,6 +326,33 @@ wrf() {
 	close(fd);
 }
 
+/* delete line range. */
+void
+delln() {
+	int i;
+	int diff;
+
+	/* free memory occupied by lines we're about to delete. */
+	for (i = addrs[0]-1; i < addrs[1]; ++i) free(lns[i]);
+
+	/* move bottom lines to top. */
+	for (i = addrs[1]; i < lnsl; ++i) {
+		lns[addrs[0]-1+i-addrs[1]] = lns[i];
+	}
+
+	/* shrink lines array. */
+	diff = addrs[1] - addrs[0] + 1;
+	lnsl -= diff;
+	lns = srealloc(lns, (lnssz -= diff) * sizeof(struct ln*));
+
+	/*
+		If there is a line after deleted block, we set it as current.
+		Otherwise, we make the line above the deleted region current;
+		actually, in this case, it will be the last line in the buffer.
+	*/
+	SCADDR(addrs[0] > lnsl ? lnsl : addrs[0]);
+}
+
 /* get single address from input (next one). */
 void
 getnxaddr() {
@@ -428,6 +455,12 @@ parsecmd() {
 			DFLTADDR();
 			CKADDRS(0);
 			printl();
+			return 0;
+		case 'd':
+			LAST();
+			DFLTADDR();
+			CKADDRS(0);
+			delln();
 			return 0;
 		case 'w':
 			SINGLE();
