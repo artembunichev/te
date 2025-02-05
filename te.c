@@ -75,6 +75,9 @@ int addrn;
 /* if current examined character is first. */
 char first;
 
+/* if text buffer is somehow modified. */
+char dirty;
+
 
 /* die and print the error message with program's name prefix. */
 void
@@ -120,10 +123,18 @@ scalloc(size_t n, size_t s) {
 	return ret;
 }
 
-/* quit the editor. */
+/* plain quit without any warnings. */
 void
 quit() {
 	exit(0);
+}
+
+/* safely quit the editor. */
+int
+squit() {
+	if (dirty) return 1;
+	quit();
+	return 0;
 }
 
 /* initialize `ln' structs after reallocating `lns'. `f' - start index. */
@@ -196,9 +207,11 @@ rdf() {
 		lln->l++;
 		/* since the added newline in the buffer, think it was read too. */
 		trb++;
+		dirty = 1;
 
 		dprintf(2, "newline appended.\n");
 	}
+	else dirty = 0;
 
 	/* initializing addresses, that's why not `SCADDR'. */
 	pcaddr = caddr = lnsl;
@@ -324,6 +337,8 @@ wrf() {
 		twb += awb;
 	}
 
+	dirty = 0;
+
 	dprintf(1, "%zu\n", twb);
 
 	close(fd);
@@ -354,6 +369,8 @@ delln() {
 		actually, in this case, it will be the last line in the buffer.
 	*/
 	SCADDR(addrs[0] > lnsl ? lnsl : addrs[0]);
+
+	dirty = 1;
 }
 
 /* mark line. */
@@ -519,6 +536,10 @@ parsecmd() {
 			wrf();
 			return 0;
 		case 'q':
+			SINGLE();
+			if (squit()) return 1;
+			return 0;
+		case 'Q':
 			SINGLE();
 			quit();
 			return 0;
