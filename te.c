@@ -56,7 +56,7 @@ struct ln {
 	size_t l;
 	/* the total size of it. */
 	size_t sz;
-	/* line's mark, by which it may be referenced to. */
+	/* line's mark, by which it may be refered to. */
 	char mark;
 };
 /* list of pointers to line nodes. */
