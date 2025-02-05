@@ -432,6 +432,20 @@ delln() {
 /* mark line. */
 void
 markln() {
+	int i;
+
+	/*
+		reassign mark.
+		i.e. if another line is already marked with this
+		mark, remove it from it and mark a requested line.
+	*/
+	for (i = 0; i < lnsl; ++i) {
+		if (lns[i]->mark == *ibup) {
+			lns[i]->mark = 0;
+			break;
+		}
+	}
+
 	/*
 		we assume that `ibup' points to actual mark that
 		has been validated.
