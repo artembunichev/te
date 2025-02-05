@@ -7,6 +7,8 @@
 #include<stdarg.h>
 #include<fcntl.h>
 #include<unistd.h>
+#include<signal.h>
+#include<sys/ioctl.h>
 #include<string.h>
 #include<stdio.h>
 #include<errno.h>
@@ -26,9 +28,11 @@
 	if (!addrn) addrs[addrn++] = caddr;\
 	if (addrn == 1) addrs[addrn++] = addrs[0];\
 }
-#define SCADDR(X) do {pcaddr = caddr; caddr = (X);} while (0)
-#define RCADDR() caddr = pcaddr;
+#define CKADDR(A) (A < 0 || A > lnsl)
 #define CKADDRS(Z) if (ckaddrs(Z)) { RCADDR(); return 1; }
+#define SCADDR(X) do {pcaddr = caddr; caddr = (X);} while (0)
+#define SSCADDR(X) if (!CKADDR(X)) SCADDR(X);
+#define RCADDR() caddr = pcaddr;
 #define CKMARK() if (*ibup < 'a' || *ibup > 'z') return 1;
 
 
@@ -77,6 +81,12 @@ char first;
 
 /* if text buffer is somehow modified. */
 char dirty;
+
+/* terminal window size, if the output is a terminal. */
+struct winsize wsz;
+/* number of terminal rows (default is set in `initz'. */
+unsigned short row;
+struct sigaction sa;
 
 
 /* die and print the error message with program's name prefix. */
@@ -225,9 +235,12 @@ rdf() {
 void
 printp() {
 	size_t i;
+
 	for (i = addrs[0]-1; i < addrs[1]; ++i) {
 		write(1, lns[i]->str, lns[i]->l);
 	}
+
+	SCADDR(addrs[1]);
 }
 
 /* print with line numbers. */
@@ -239,6 +252,8 @@ printn() {
 		dprintf(1, "%-2zu  ", i+1);
 		write(1, lns[i]->str, lns[i]->l);
 	}
+
+	SCADDR(addrs[1]);
 }
 
 /* print unambiguously. */
@@ -279,6 +294,47 @@ printl() {
 			free(s);
 		}
 	}
+
+	SCADDR(addrs[1]);
+}
+
+/*
+	Set "z" mode facilities.
+	In this mode lines are printed so that they fit the screen.
+	In order to achieve this, we need to determine the terminal
+	size and update it when it changes its sizes.
+	If the output does not go to a terminal, use default values instead.
+*/
+void
+setz() {
+	if (!isatty(1)) return;
+
+	if (ioctl(1, TIOCGWINSZ, &wsz) != -1) {
+		row = wsz.ws_row;
+	}
+}
+
+/* initialize "z" facilities. */
+void
+initz() {
+	/* default value. */
+	row = 32;
+
+	setz();
+
+	sa.sa_handler = &setz;
+	sigaction(SIGWINCH, &sa, NULL);
+}
+
+/* activate "z" mode, in which lines will fit the screen. */
+void
+zmode() {
+	/* end address (potentially with buffer overflow). */
+	int e;
+
+	addrs[0] = addrs[1];
+	e = addrs[0] + row - 2;
+	addrs[1] = e > lnsl ? lnsl : e;
 }
 
 /* print target file path. */
@@ -473,7 +529,7 @@ int
 ckaddrs(char zer) {
 	if (!zer && (!addrs[0] || !addrs[1])) return 1;
 	if (addrs[1] < addrs[0]) return 1;
-	if (addrs[0] > lnsl || addrs[1] > lnsl) return 1;
+	if (CKADDR(addrs[0]) || CKADDR(addrs[1])) return 1;
 	return 0;
 }
 
@@ -516,6 +572,27 @@ parsecmd() {
 			DFLTADDR();
 			CKADDRS(0);
 			printl();
+			return 0;
+		case 'z':
+			DFLTADDR();
+			CKADDRS(0);
+			zmode();
+			switch(*++ibup) {
+			case 'n':
+				printn();
+				break;
+			case 'l':
+				printl();
+				break;
+			case 'p':
+			/* FALLTHROUGH. */
+			case '\n':
+				printp();
+				break;
+			default:
+				return 1;
+			}
+			SSCADDR(caddr+1);
 			return 0;
 		case 'd':
 			LAST();
@@ -572,14 +649,16 @@ cmdloop() {
 	while (1) {
 		arb = read(0, &ibu, MXBFSZ);
 		if (!arb) quit();
-		if (arb == -1) die("can not read from stdin.\n");
+		if (arb == -1) {
+			if (errno == EINTR) continue;
+			else die("can not read from stdin.\n");
+		}
 
 		ibup = &ibu[0];
 		if (parsecmd()) {
 			dprintf(1, "?\n");
 		}
 	}
-	if (arb == -1) die("error reading stdin.\n");
 }
 
 int
@@ -587,6 +666,8 @@ main(int argc, char** argv) {
 	if (argc == 1) die("specify a file to edit.\n");
 
 	fpth = argv[1];
+
+	initz();
 
 	rdf();
 
