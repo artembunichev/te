@@ -532,9 +532,17 @@ parsecmd() {
 			markln();
 			return 0;
 		case 'w':
-			SINGLE();
-			wrf();
-			return 0;
+			FIRST();
+			switch(*++ibup) {
+			case 'q':
+				wrf();
+				if (squit()) return 1;
+				break;
+			case '\n':
+				wrf();
+				return 0;
+			}
+			return 1;
 		case 'q':
 			SINGLE();
 			if (squit()) return 1;
