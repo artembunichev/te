@@ -451,11 +451,13 @@ mvln() {
 	/* stash target range. */
 	memcpy(tmp, &lns[addrs[0]-1], diffb);
 
+	/* moving to the bottom. */
 	if (addrs[2] > addrs[1]) {
 		memcpy(&lns[addrs[0]-1], &lns[addrs[1]],
 		       (addrs[2]-addrs[1]) * sizeof(struct ln*));
 		memcpy(&lns[addrs[2]-diff], tmp, diffb);
 	}
+	/* moving to the top. */
 	else {
 		memmove(&lns[addrs[2]+diff], &lns[addrs[2]],
 		        (addrs[0]-1-addrs[2]) * sizeof(struct ln*));
