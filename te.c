@@ -728,7 +728,7 @@ cmdloop() {
 
 		ibup = &ibu[0];
 		if (parsecmd()) {
-			dprintf(1, "?\n");
+			dprintf(2, "?\n");
 		}
 	}
 }
