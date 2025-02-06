@@ -406,16 +406,15 @@ delln() {
 	int i;
 	int diff;
 
+	diff = addrs[1] - addrs[0] + 1;
+
 	/* free memory occupied by lines we're about to delete. */
 	for (i = addrs[0]-1; i < addrs[1]; ++i) free(lns[i]);
 
 	/* move bottom lines to top. */
-	for (i = addrs[1]; i < lnsl; ++i) {
-		lns[addrs[0]-1+i-addrs[1]] = lns[i];
-	}
+	memcpy(&lns[addrs[0]-1], &lns[addrs[1]], (lnsl-addrs[1]) * sizeof(struct ln*));
 
 	/* shrink lines array. */
-	diff = addrs[1] - addrs[0] + 1;
 	lnsl -= diff;
 	lns = srealloc(lns, (lnssz -= diff) * sizeof(struct ln*));
 
