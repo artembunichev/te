@@ -72,7 +72,7 @@ size_t caddr;
 size_t pcaddr;
 
 /* specified (input) addresses. */
-size_t addrs[2];
+size_t addrs[3];
 /* current number of addresses specified. */
 int addrn;
 
@@ -429,6 +429,44 @@ delln() {
 	dirty = 1;
 }
 
+/*
+	move line(s).
+	This function is called only when the movment will
+	not be redundant (all the checks are made in `cmdlool').
+	That's why it does set `dirty' flag unconditionally.
+*/
+void
+mvln() {
+	/* the size of target range. */
+	int diff;
+	/* size of target range in bytes. */
+	int diffb;
+	/* temorary place for swapping things. */
+	struct ln** tmp;
+
+	diff = addrs[1] - addrs[0] + 1;
+	diffb = diff * sizeof(struct ln*);
+	tmp = smalloc(diffb);
+
+	/* stash target range. */
+	memcpy(tmp, &lns[addrs[0]-1], diffb);
+
+	if (addrs[2] > addrs[1]) {
+		memcpy(&lns[addrs[0]-1], &lns[addrs[1]],
+		       (addrs[2]-addrs[1]) * sizeof(struct ln*));
+		memcpy(&lns[addrs[2]-diff], tmp, diffb);
+	}
+	else {
+		memmove(&lns[addrs[2]+diff], &lns[addrs[2]],
+		        (addrs[0]-1-addrs[2]) * sizeof(struct ln*));
+		memcpy(&lns[addrs[2]], tmp, diffb);
+	}
+
+	dirty = 1;
+
+	free(tmp);
+}
+
 /* mark line. */
 void
 markln() {
@@ -550,7 +588,7 @@ ckaddrs(char zer) {
 /* parse input and return number >0 if error occurs. */
 int
 parsecmd() {
-	addrs[0] = addrs[1] = addrn = 0;
+	addrs[0] = addrs[1] = addrs[2] = addrn = 0;
 	first = 1;
 
 	if (getrng()) return 1;
@@ -621,6 +659,25 @@ parsecmd() {
 			ibup++;
 			CKMARK();
 			markln();
+			return 0;
+		case 'm':
+			DFLTADDR();
+			CKADDRS(0);
+			if (*++ibup != '\n') {
+				/* we expect only a single destination address. */
+				if (getnxaddr() || *ibup != '\n') return 1;
+			}
+			if (addrn == 2) addrs[addrn++] = caddr;
+			/* we can not move the range within itself. */
+			if (addrs[2] >= addrs[0] && addrs[2] < addrs[1]) return 1;
+			/*
+				redundant cases, which will result in the same
+				line position within the buffer. So it's not
+				necessary to perform an actual move.
+			*/
+			if (addrs[1] == addrs[2]) return 0;
+			if (addrs[2] == addrs[0]-1) return 0;
+			mvln();
 			return 0;
 		case 'w':
 			FIRST();
