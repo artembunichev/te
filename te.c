@@ -677,8 +677,8 @@ parsecmd() {
 				line position within the buffer. So it's not
 				necessary to perform an actual move.
 			*/
-			if (addrs[1] == addrs[2]) return 0;
-			if (addrs[2] == addrs[0]-1) return 0;
+			if (addrs[1] == addrs[2]) return 1;
+			if (addrs[2] == addrs[0]-1) return 1;
 			mvln();
 			return 0;
 		case 'w':
