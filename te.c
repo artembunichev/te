@@ -34,6 +34,13 @@
 #define SSCADDR(X) if (!CKADDR(X)) SCADDR(X);
 #define RCADDR() caddr = pcaddr;
 #define CKMARK() if (*ibup < 'a' || *ibup > 'z') return 1;
+#define DADDR(D) {\
+	if (*++ibup != '\n') {\
+		/* we expect only a single destination address. */\
+		if (getnxaddr() || *ibup != '\n') return 1;\
+	}\
+	if (addrn == 2) addrs[addrn++] = D;\
+}
 
 
 /* target file descriptor. */
@@ -665,11 +672,7 @@ parsecmd() {
 		case 'm':
 			DFLTADDR();
 			CKADDRS(0);
-			if (*++ibup != '\n') {
-				/* we expect only a single destination address. */
-				if (getnxaddr() || *ibup != '\n') return 1;
-			}
-			if (addrn == 2) addrs[addrn++] = caddr;
+			DADDR(addrs[1] == lnsl ? lnsl : addrs[1]+1);
 			/* we can not move the range within itself. */
 			if (addrs[2] >= addrs[0] && addrs[2] < addrs[1]) return 1;
 			/*
