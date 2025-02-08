@@ -463,6 +463,7 @@ mvln() {
 		memcpy(&lns[addrs[2]], tmp, diffb);
 	}
 
+	SCADDR(addrs[2] > addrs[1] ? addrs[2] : addrs[2] + diff);
 	dirty = 1;
 
 	free(tmp);
