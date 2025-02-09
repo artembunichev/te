@@ -59,7 +59,7 @@ ssize_t arb;
 
 /* a line node. */
 struct ln {
-	/* the value of a line. */
+	/* the value of a line without a newline character in the end. */
 	char* str;
 	/* its actual length. */
 	size_t l;
@@ -194,6 +194,15 @@ rdf() {
 		trb += arb;
 
 		for (i = 0; i < arb; ++i) {
+			if (ibu[i] == '\n') {
+				++lnsl;
+				if (lnsl == lnssz) {
+					lns = srealloc(lns, (lnssz += EXLNS) * sizeof(struct ln*));
+					initlnmem(lnsl);
+				}
+				continue;
+			}
+
 			if (lns[lnsl]->l == lns[lnsl]->sz) {
 				lns[lnsl]->str = srealloc(lns[lnsl]->str, lns[lnsl]->sz += EXLIN);
 			}
@@ -201,33 +210,22 @@ rdf() {
 			lns[lnsl]->str[lns[lnsl]->l] = ibu[i];
 			lns[lnsl]->l++;
 
-			if (ibu[i] == '\n') {
-				++lnsl;
-				if (lnsl == lnssz) {
-					lns = srealloc(lns, (lnssz += EXLNS) * sizeof(struct ln*));
-					initlnmem(lnsl);
-				}
-			}
 		}
 	}
 	if (arb == -1) die("error reading %s.\n", fpth);
 
 	/*
-		append newline to the end of file if it doesn't exist.
+		"append" newline to the end of file if it doesn't exist.
+		Actually, we don't _append_ the line itself, 'cause we
+		store lines without "\n" character in the end. What we
+		do is just inform that if we attempt to write the
+		file back, a new line will appear.
 	*/
-	/* this means that a file doesn't have a newline in the end. */
-	if (!lnsl) lnsl = 1;
-	lln = lns[lnsl-1];
-	if (lln->str[lln->l-1] != '\n') {
-		if (lns[lnsl-1]->l + 1 == lln->sz) {
-			lln->str = srealloc(lln->str, (lln->sz += 1));
-		}
-		lln->str[lln->l] = '\n';
-		lln->l++;
-		/* since the added newline in the buffer, think it was read too. */
+	if (!lnsl) {
+		lnsl++;
 		trb++;
+		/* 'cause we "made" a change. */
 		dirty = 1;
-
 		dprintf(2, "newline appended.\n");
 	}
 	else dirty = 0;
@@ -247,6 +245,7 @@ printp() {
 
 	for (i = addrs[0]-1; i < addrs[1]; ++i) {
 		write(1, lns[i]->str, lns[i]->l);
+		write(1, "\n", 1);
 	}
 
 	SCADDR(addrs[1]);
@@ -260,6 +259,7 @@ printn() {
 	for (i = addrs[0]-1; i < addrs[1]; ++i) {
 		dprintf(1, "%-2zu  ", i+1);
 		write(1, lns[i]->str, lns[i]->l);
+		write(1, "\n", 1);
 	}
 
 	SCADDR(addrs[1]);
@@ -283,10 +283,6 @@ printl() {
 			l = 1;
 
 			switch (lns[i]->str[j]) {
-			case '\n':
-				strcpy(s, "$\n");
-				l = 2;
-				break;
 			case '\t':
 				strcpy(s, "\\t");
 				l = 2;
@@ -302,6 +298,7 @@ printl() {
 			write(1, s, l);
 			free(s);
 		}
+		write(1, "$\n", 2);
 	}
 
 	SCADDR(addrs[1]);
@@ -398,8 +395,10 @@ wrf() {
 
 	for (i = 0; i < lnsl; ++i) {
 		awb = write(fd, lns[i]->str, lns[i]->l);
-		if (awb == -1) die("error writing to %s.\n", fpth);
-		twb += awb;
+		/* append a newline for each written line. */
+		if (awb == -1 || write(fd, "\n", 1) == -1)
+			die("error writing to %s.\n", fpth);
+		twb += awb+1;
 	}
 
 	dirty = 0;
