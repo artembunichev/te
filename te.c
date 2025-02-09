@@ -21,20 +21,37 @@
 /* by how many character do expand the line. */
 #define EXLIN 64
 
+/* get the difference between two numbers. */
 #define DIFF(A, B) ((A) > (B) ? ((A) - (B)) : ((B) - (A)))
+
+/* check a single address for validity (`0' means valid). */
+#define CKADDR(A) ((A) < 0 || (A) > lnsl)
+/* save current address value as previous and set a new one. */
+#define SCADDR(X) do {pcaddr = caddr; caddr = (X);} while (0)
+/* like `SCADDR' but check new value for validity first. */
+#define SSCADDR(X) if (!CKADDR(X)) SCADDR(X);
+/* restore current address value to previous one. */
+#define RCADDR() caddr = pcaddr;
+
+/*
+	The following macros are supposed to be called within `cmdloop'.
+*/
+/* the currently parsed character must be a first one in the stream. */
 #define FIRST() if (!first) return 1;
+/* currently examined character must be last (next is "\n"). */
 #define LAST() if (*(ibup+1) != '\n') return 1;
 #define SINGLE() FIRST(); LAST();
+/* use default addresses if they were not specified manually. */
 #define DFLTADDR() {\
 	if (!addrn) addrs[addrn++] = caddr;\
 	if (addrn == 1) addrs[addrn++] = addrs[0];\
 }
-#define CKADDR(A) ((A) < 0 || (A) > lnsl)
+/*
+	check an address range for validity and restore current
+	address if range is invalid.
+*/
 #define CKADDRS(Z) if (ckaddrs(Z)) { RCADDR(); return 1; }
-#define SCADDR(X) do {pcaddr = caddr; caddr = (X);} while (0)
-#define SSCADDR(X) if (!CKADDR(X)) SCADDR(X);
-#define RCADDR() caddr = pcaddr;
-#define CKMARK() if (*ibup < 'a' || *ibup > 'z') return 1;
+/* extract third address (which is a "destination address") and validate it. */
 #define DADDR(D) {\
 	if (*++ibup != '\n') {\
 		/* we expect only a single destination address. */\
@@ -43,6 +60,8 @@
 	if (addrn == 2) addrs[addrn++] = (D);\
 	if (CKADDR(addrs[2])) return 1;\
 }
+/* check line mark for validity. */
+#define CKMARK() if (*ibup < 'a' || *ibup > 'z') return 1;
 
 
 /* target file descriptor. */
