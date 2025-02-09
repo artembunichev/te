@@ -21,6 +21,7 @@
 /* by how many character do expand the line. */
 #define EXLIN 64
 
+#define DIFF(A, B) ((A) > (B) ? ((A) - (B)) : ((B) - (A)))
 #define FIRST() if (!first) return 1;
 #define LAST() if (*(ibup+1) != '\n') return 1;
 #define SINGLE() FIRST(); LAST();
@@ -28,7 +29,7 @@
 	if (!addrn) addrs[addrn++] = caddr;\
 	if (addrn == 1) addrs[addrn++] = addrs[0];\
 }
-#define CKADDR(A) (A < 0 || A > lnsl)
+#define CKADDR(A) ((A) < 0 || (A) > lnsl)
 #define CKADDRS(Z) if (ckaddrs(Z)) { RCADDR(); return 1; }
 #define SCADDR(X) do {pcaddr = caddr; caddr = (X);} while (0)
 #define SSCADDR(X) if (!CKADDR(X)) SCADDR(X);
@@ -39,7 +40,8 @@
 		/* we expect only a single destination address. */\
 		if (getnxaddr() || *ibup != '\n') return 1;\
 	}\
-	if (addrn == 2) addrs[addrn++] = D;\
+	if (addrn == 2) addrs[addrn++] = (D);\
+	if (CKADDR(addrs[2])) return 1;\
 }
 
 
@@ -476,6 +478,87 @@ mvln() {
 	free(tmp);
 }
 
+/* routine for replicating a line to another address. */
+void
+dorep(int i, int leap) {
+	/* replicated line. */
+	struct ln* rln;
+
+	rln = smalloc(sizeof(struct ln));
+	rln->str = smalloc(lns[i]->l);
+	memcpy(rln->str, lns[i]->str, lns[i]->l);
+	rln->l = lns[i]->l;
+	rln->sz = rln->l;
+	rln->mark = 0;
+
+	lns[i+leap] = rln;
+}
+
+/*
+	replicate (copy) lines.
+	Assume invalid addresses are filtered out.
+*/
+void
+repln() {
+	/* number of lines to move to bottom. */
+	int rest;
+	int diff;
+	int difflb;
+	int i;
+
+	rest = lnsl - addrs[2];
+	diff = addrs[1] - addrs[0] + 1;
+	difflb = diff * sizeof(struct ln*);
+	if (lnsl + difflb > lnssz) {
+		lns = srealloc(lns, (lnssz += diff) * sizeof(struct ln*));
+	}
+	lnsl += diff;
+
+	memmove(&lns[addrs[2]]+diff, &lns[addrs[2]], rest * sizeof(struct ln*));
+
+	if (addrs[2] < addrs[0] || addrs[2] >= addrs[1]) {
+		int leap;
+		/* index of first line to be replicated. */
+		int sr;
+
+		sr = addrs[2] >= addrs[1] ? addrs[0] - 1 : addrs[0] - 1 + diff;
+		if (addrs[2] >= addrs[1]) {
+			leap = addrs[2] - addrs[0] + 1;
+		}
+		else {
+			leap = -(diff + addrs[0]-addrs[2] - 1);
+		}
+
+		for (i = sr; i < sr+diff; ++i) {
+			dorep(i, leap);
+		}
+	}
+	else {
+		int ffw;
+		int fbw;
+		int tbw;
+		int leapfw;
+		int leapbw;
+
+		ffw = addrs[0] - 1;
+		fbw = addrs[1]+addrs[2]-addrs[0]+1;
+		tbw = fbw + addrs[1] - addrs[2];
+		leapfw = addrs[2]-addrs[0]+1;
+		leapbw = addrs[2]-addrs[1];
+
+		for (i = ffw; i < addrs[2]; ++i) {
+			dorep(i, leapfw);
+		}
+
+		for (i = fbw; i < tbw; ++i) {
+			dorep(i, leapbw);
+		}
+	}
+
+	SCADDR(addrs[2] + diff);
+	dirty = 1;
+}
+
 /* mark line. */
 void
 markln() {
@@ -683,6 +766,12 @@ parsecmd() {
 			if (addrs[1] == addrs[2]) return 1;
 			if (addrs[2] == addrs[0]-1) return 1;
 			mvln();
+			return 0;
+		case 'r':
+			DFLTADDR();
+			CKADDRS(0);
+			DADDR(addrs[1]);
+			repln();
 			return 0;
 		case 'w':
 			FIRST();
