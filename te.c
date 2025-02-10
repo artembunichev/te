@@ -32,6 +32,8 @@
 #define SSCADDR(X) if (!CKADDR(X)) SCADDR(X);
 /* restore current address value to previous one. */
 #define RCADDR() caddr = pcaddr;
+/* free line structure. */
+#define FREELN(L) do {free(L->str); free(L);} while (0)
 
 /*
 	The following macros are supposed to be called within `cmdloop'.
@@ -50,7 +52,7 @@
 	check an address range for validity and restore current
 	address if range is invalid.
 */
-#define CKADDRS(Z) if (ckaddrs(Z)) { RCADDR(); return 1; }
+#define CKADDRS(Z, O) if (ckaddrs(Z, O)) { RCADDR(); return 1; }
 /* extract third address (which is a "destination address") and validate it. */
 #define DADDR(D) {\
 	if (*++ibup != '\n') {\
@@ -436,7 +438,7 @@ delln() {
 	diff = addrs[1] - addrs[0] + 1;
 
 	/* free memory occupied by lines we're about to delete. */
-	for (i = addrs[0]-1; i < addrs[1]; ++i) free(lns[i]);
+	for (i = addrs[0]-1; i < addrs[1]; ++i) FREELN(lns[i]);
 
 	/* move bottom lines to top. */
 	memcpy(&lns[addrs[0]-1], &lns[addrs[1]], (lnsl-addrs[1]) * sizeof(struct ln*));
@@ -577,6 +579,35 @@ repln() {
 	dirty = 1;
 }
 
+/* join lines. */
+void
+jln() {
+	struct ln* from;
+	struct ln* to;
+	/* the length of `to' after join. */
+	int jl;
+
+	from = lns[addrs[1]-1];
+	to = lns[addrs[0]-1];
+	jl = to->l + from->l;
+
+	/* check if `to' has enough space. */
+	if (jl > to->sz) {
+		to->str = srealloc(to->str, to->sz += (jl - to->sz));
+	}
+
+	memcpy(&to->str[to->l], from->str, from->l);
+	to->l = jl;
+	to->mark = 0;
+	FREELN(from);
+
+	memcpy(&lns[addrs[1]-1], &lns[addrs[1]], (lnsl-addrs[1]) * sizeof(struct ln*));
+
+	--lnsl;
+	SCADDR(addrs[0] < addrs[1] ? addrs[0] : addrs[0] - 1);
+	dirty = 1;
+}
+
 /* mark line. */
 void
 markln() {
@@ -686,11 +717,12 @@ getrng() {
 	check addresses for validity.
 
 	`zer' - if address `0' is allowed.
+	`ord' - if addresses should be ordered.
 */
 int
-ckaddrs(char zer) {
+ckaddrs(char zer, char ord) {
 	if (!zer && (!addrs[0] || !addrs[1])) return 1;
-	if (addrs[1] < addrs[0]) return 1;
+	if (ord && (addrs[1] < addrs[0])) return 1;
 	if (CKADDR(addrs[0]) || CKADDR(addrs[1])) return 1;
 	return 0;
 }
@@ -720,24 +752,24 @@ parsecmd() {
 		case 'p':
 			LAST();
 			DFLTADDR();
-			CKADDRS(0);
+			CKADDRS(0, 1);
 			printp();
 			return 0;
 		case 'n':
 			LAST();
 			DFLTADDR();
-			CKADDRS(0);
+			CKADDRS(0, 1);
 			printn();
 			return 0;
 		case 'l':
 			LAST();
 			DFLTADDR();
-			CKADDRS(0);
+			CKADDRS(0, 1);
 			printl();
 			return 0;
 		case 'z':
 			DFLTADDR();
-			CKADDRS(0);
+			CKADDRS(0, 1);
 			zmode();
 			switch(*++ibup) {
 			case 'n':
@@ -759,12 +791,12 @@ parsecmd() {
 		case 'd':
 			LAST();
 			DFLTADDR();
-			CKADDRS(0);
+			CKADDRS(0, 1);
 			delln();
 			return 0;
 		case 'k':
 			DFLTADDR();
-			CKADDRS(0);
+			CKADDRS(0, 1);
 			SCADDR(addrs[1]);
 			ibup++;
 			CKMARK();
@@ -772,7 +804,7 @@ parsecmd() {
 			return 0;
 		case 'm':
 			DFLTADDR();
-			CKADDRS(0);
+			CKADDRS(0, 1);
 			DADDR(addrs[1] == lnsl ? lnsl : addrs[1]+1);
 			/* we can not move the range within itself. */
 			if (addrs[2] >= addrs[0] && addrs[2] < addrs[1]) return 1;
@@ -787,9 +819,17 @@ parsecmd() {
 			return 0;
 		case 'r':
 			DFLTADDR();
-			CKADDRS(0);
+			CKADDRS(0, 1);
 			DADDR(addrs[1]);
 			repln();
+			return 0;
+		case 'j':
+			LAST();
+			if (!addrn) addrs[addrn++] = caddr;
+			if (addrn == 1) addrs[addrn++] = addrs[0] + 1;
+			CKADDRS(0, 0);
+			if (addrs[0] == addrs[1]) return 1;
+			jln();
 			return 0;
 		case 'w':
 			FIRST();
@@ -816,7 +856,7 @@ parsecmd() {
 
 			if (!addrn) addrs[addrn++] = caddr;
 			if (addrn == 1) addrs[addrn] = addrs[0];
-			CKADDRS(0);
+			CKADDRS(0, 1);
 			SCADDR(addrs[1]);
 			printp();
 			return 0;
