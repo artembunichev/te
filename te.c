@@ -608,6 +608,81 @@ jln() {
 	dirty = 1;
 }
 
+/* append a line. */
+void
+apnd() {
+	/*
+		current state:
+		`0' - ordinary character.
+		`1' - previous was "\n".
+		`2' - previous was a sequence of "\n.".
+	*/
+	char st;
+	int i;
+	/* a single read line. */
+	char* ln;
+	size_t lnl;
+	size_t lnsz;
+
+	st = 1;
+	ln = NULL;
+	lnsz = lnl = 0;
+	pcaddr = caddr;
+	caddr = addrs[1];
+
+	while ((arb = read(0, &ibu, MXBFSZ)) > 0) {
+		i = 0;
+
+		while (i < arb) {
+			switch (ibu[i]) {
+			case '\n':
+				if (st == 2) {
+					free(ln);
+					return;
+				}
+				else {
+					st = 1;
+					if (lnsl+1 > lnssz) {
+						lns = srealloc(lns, (lnssz += EXLNS) * sizeof(struct ln*));
+					}
+					memmove(&lns[caddr+1], &lns[caddr], (lnsl - caddr) * sizeof(struct ln*));
+					lnsl++;
+
+					lns[caddr] = scalloc(1, sizeof(struct ln));
+					lns[caddr]->str = smalloc(lnl);
+					memcpy(lns[caddr]->str, ln, lnl);
+					lns[caddr]->sz = lns[caddr]->l = lnl;
+					lns[caddr]->mark = 0;
+
+					/*
+						here we do *not* zero the `lnsz', because
+						this memory has already been allocated anyway,
+						so we can continue making use of it.
+					*/
+					lnl = 0;
+
+					caddr++;
+					dirty = 1;
+				}
+				break;
+			case '.':
+				if (st == 1) {
+					st = 2;
+					break;
+				}
+				/* FALLTHROUGH. */
+			default:
+				st = 0;
+				if (lnl+1 > lnsz) {
+					ln = srealloc(ln, lnsz += EXLIN);
+				}
+				ln[lnl++] = ibu[i];
+			}
+			++i;
+		}
+	}
+}
+
 /* mark line. */
 void
 markln() {
@@ -830,6 +905,12 @@ parsecmd() {
 			CKADDRS(0, 0);
 			if (addrs[0] == addrs[1]) return 1;
 			jln();
+			return 0;
+		case 'a':
+			LAST();
+			DFLTADDR();
+			CKADDRS(1, 1);
+			apnd();
 			return 0;
 		case 'w':
 			FIRST();
