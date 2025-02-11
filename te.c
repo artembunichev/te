@@ -920,6 +920,18 @@ parsecmd() {
 			addrs[1]--;
 			apnd();
 			return 0;
+		case 'c':
+			LAST();
+			DFLTADDR();
+			CKADDRS(0, 1);
+			/*
+				changing the range is like first deleting the
+				range and then appending to the previous line.
+			*/
+			delln();
+			addrs[1] = addrs[0] - 1;
+			apnd();
+			return 0;
 		case 'w':
 			FIRST();
 			switch(*++ibup) {
