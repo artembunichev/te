@@ -912,6 +912,14 @@ parsecmd() {
 			CKADDRS(1, 1);
 			apnd();
 			return 0;
+		case 'i':
+			LAST();
+			DFLTADDR();
+			CKADDRS(0, 1);
+			/* inserting at X is like appending at X-1. */
+			addrs[1]--;
+			apnd();
+			return 0;
 		case 'w':
 			FIRST();
 			switch(*++ibup) {
