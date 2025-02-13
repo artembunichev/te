@@ -7,6 +7,7 @@
 #include<stdarg.h>
 #include<fcntl.h>
 #include<unistd.h>
+#include<regex.h>
 #include<signal.h>
 #include<sys/ioctl.h>
 #include<string.h>
@@ -20,6 +21,12 @@
 #define EXLNS 32
 /* by how many character do expand the line. */
 #define EXLIN 64
+/* the size of buffers for regular expression pattern and substitution. */
+#define RESZ 4096
+/* by how many bytes to expand the buffer for actual substitution string `asub'. */
+#define EXASUB 1024
+/* the maximum number of re subexpressions. */
+#define MXSE 8
 
 /* get the difference between two numbers. */
 #define DIFF(A, B) ((A) > (B) ? ((A) - (B)) : ((B) - (A)))
@@ -117,6 +124,27 @@ struct winsize wsz;
 /* number of terminal rows (default is set in `initz'. */
 unsigned short row;
 struct sigaction sa;
+
+/* pattern for regular expression. */
+char pat[RESZ];
+/* substitution for the re pattern. */
+char sub[RESZ];
+/* actual substitution string ("&" replaced with match). */
+char* asub;
+size_t asubsz;
+size_t asubl;
+/* if regex should be global. */
+char gflag;
+/* if regex should be case-insensitive. */
+char iflag;
+/* the particular re match we want to substitute. */
+char remn;
+/* the regular expression for substitution. */
+regex_t reg;
+/* number of re matches. */
+size_t nmat;
+/* re match and capture groups. */
+regmatch_t mat[MXSE];
 
 
 /* die and print the error message with program's name prefix. */
@@ -800,6 +828,152 @@ ckaddrs(char zer, char ord) {
 	return 0;
 }
 
+/*
+	read regex string into buffer (`pat' or `sub').
+	`buf' - the pointer to either `pat' or `sub'.
+	`emp' - if string is allowed to be empty (yes for `sub').
+*/
+int
+rdres(char* buf, char emp) {
+	int i;
+	/*
+		if a currenly examined character was escaped
+		by a character before.
+	*/
+	char pesc;
+
+	i = 0;
+	pesc = 0;
+	while (*ibup != '/' || pesc) {
+		switch (*ibup) {
+		case '\n':
+			return 1;
+		default:
+			buf[i++] = *ibup;
+			if (*ibup++ == '\\') pesc ^= 1;
+			else pesc = 0;
+		}
+	}
+	if (!emp && !i) return 1;
+	buf[i] = '\0';
+	ibup++;
+
+	return 0;
+}
+
+/* construct an actual substitution string. */
+void
+casub(char* mstr, size_t mlen) {
+	int i;
+	char pesc;
+
+	asub = NULL;
+	asubsz = asubl = 0;
+	pesc = 0;
+
+	for (i = 0; sub[i] != '\0'; ++i) {
+		switch (sub[i]) {
+		case '&':
+			if (!pesc) {
+				if (asubl + mlen > asubsz) {
+					asub = srealloc(asub, asubsz += EXASUB);
+				}
+				memcpy(asub+asubl, mstr, mlen);
+				asubl += mlen;
+				break;
+			}
+		/* FALLTHROUGH. */
+		default:
+			if (sub[i] == '\\') {
+				pesc ^= 1;
+				if (pesc) break;
+			}
+			if (asubl + 1 > asubsz) {
+				asub = srealloc(asub, asubsz += EXASUB);
+			}
+			asub[asubl++] = sub[i];
+		}
+	}
+}
+
+/* perform a substitution. */
+int
+dosub() {
+	int i;
+	/* difference in length of match and actual substitution. */
+	int diff;
+	/* number of matches found. */
+	int fnd;
+	/* current match index for each line. */
+	int j;
+	/* match start offset in source string. */
+	regoff_t srcso;
+	/* match end offset in source string. */
+	regoff_t srceo;
+	/* a current offset of examined string. */
+	regoff_t off;
+	/* length of matched substring. */
+	int mlen;
+	/* a NULL-terminated string from buffer. */
+	char* strnul;
+	/* start address. */
+	int s;
+	/* end address .*/
+	int e;
+
+	strnul = NULL;
+	fnd = 0;
+	s = addrs[0] - 1;
+	e = addrs[1];
+
+	for (i = s; i < e; ++i) {
+		off = 0;
+		j = 0;
+
+lpstart:
+		strnul = srealloc(strnul, lns[i]->l + 1);
+		strncpy(strnul, lns[i]->str, lns[i]->l);
+		strnul[lns[i]->l] = '\0';
+		while ((gflag || j != remn) && !regexec(&reg, strnul+off, MXSE, mat, 0)) {
+			j++;
+			mlen = mat[0].rm_eo - mat[0].rm_so;
+			if (gflag || j == remn) {
+				fnd++;
+				srcso = mat[0].rm_so+off;
+				srceo = mat[0].rm_eo+off;
+				casub(strnul+srcso, mlen);
+				diff = asubl - mlen;
+				if (diff > 0) {
+					if (lns[i]->l + diff > lns[i]->sz) {
+						lns[i]->str = srealloc(lns[i]->str, lns[i]->sz += diff);
+					}
+				}
+				memmove(lns[i]->str+srceo+diff,
+				        lns[i]->str+srceo,
+				        lns[i]->l - srceo);
+				memcpy(lns[i]->str+srcso, asub, asubl);
+				lns[i]->l += diff;
+				off += diff;
+				free(asub);
+			}
+			off += mat[0].rm_eo;
+			goto lpstart;
+		}
+
+		if (j) {
+			SCADDR(addrs[0] = addrs[1] = i+1);
+			printp();
+		}
+	}
+	free(strnul);
+	regfree(&reg);
+	if (!fnd) return 1;
+
+	dirty = 1;
+
+	return 0;
+}
+
 /* parse input and return number >0 if error occurs. */
 int
 parsecmd() {
@@ -929,6 +1103,41 @@ parsecmd() {
 			delln();
 			addrs[1] = addrs[0] - 1;
 			apnd();
+			return 0;
+		case 's':
+			DFLTADDR();
+			CKADDRS(0, 1);
+			if (*++ibup != '/') return 1;
+			ibup++;
+			if (rdres(&pat, 0)) return 1;
+			if (rdres(&sub, 1)) return 1;
+			gflag = iflag = remn = 0;
+			/*
+				parse re flags.
+				global flag and match number can not be set together.
+			*/
+			while (*ibup != '\n') {
+				switch (*ibup++) {
+				case 'g':
+					if (remn || gflag) return 1;
+					gflag = 1;
+					break;
+				case 'i':
+					if (iflag) return 1;
+					iflag = 1;
+					break;
+				case '1': case '2': case '3': case '4': case '5':
+				case '6': case '7': case '8': case '9':
+					if (gflag || remn) return 1;
+					remn = strtol(--ibup, &ibup, 10);
+					break;
+				default:
+					return 1;
+				}
+			}
+			if (!remn) remn = 1;
+			if (regcomp(&reg, &pat, iflag ? REG_ICASE : REG_BASIC)) return 1;
+			if (dosub()) return 1;
 			return 0;
 		case 'w':
 			FIRST();
