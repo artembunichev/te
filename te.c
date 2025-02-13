@@ -1048,6 +1048,7 @@ parsecmd() {
 			ibup++;
 			CKMARK();
 			markln();
+			RCADDR();
 			return 0;
 		case 'm':
 			DFLTADDR();
