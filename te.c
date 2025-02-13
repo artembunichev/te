@@ -194,8 +194,6 @@ rdf() {
 	int i;
 	/* totally read bytes. */
 	ssize_t trb;
-	/* last line. */
-	struct ln* lln;
 
 	trb = 0;
 	lns = smalloc(EXLNS * sizeof(struct ln*));
