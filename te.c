@@ -127,6 +127,7 @@ struct sigaction sa;
 
 /* pattern for regular expression. */
 char pat[RESZ];
+int patl;
 /* substitution for the re pattern. */
 char sub[RESZ];
 /* actual substitution string ("&" replaced with match). */
@@ -145,6 +146,8 @@ regex_t reg;
 size_t nmat;
 /* re match and capture groups. */
 regmatch_t mat[MXSE];
+/* if we have previous successfull substitutions. */
+char sucre;
 
 
 /* die and print the error message with program's name prefix. */
@@ -831,10 +834,10 @@ ckaddrs(char zer, char ord) {
 /*
 	read regex string into buffer (`pat' or `sub').
 	`buf' - the pointer to either `pat' or `sub'.
-	`emp' - if string is allowed to be empty (yes for `sub').
+	`len' - pointer to a string length variable.
 */
 int
-rdres(char* buf, char emp) {
+rdres(char* buf, int* len) {
 	int i;
 	/*
 		if a currenly examined character was escaped
@@ -854,8 +857,8 @@ rdres(char* buf, char emp) {
 			else pesc = 0;
 		}
 	}
-	if (!emp && !i) return 1;
-	buf[i] = '\0';
+	if (len) *len = i;
+	if (i) buf[i] = '\0';
 	ibup++;
 
 	return 0;
@@ -1108,10 +1111,19 @@ parsecmd() {
 		case 's':
 			DFLTADDR();
 			CKADDRS(0, 1);
-			if (*++ibup != '/') return 1;
+			if (*++ibup == '\n') {
+				if (sucre) goto subact;
+				return 1;
+			}
+			if (*ibup != '/') return 1;
 			ibup++;
-			if (rdres(&pat, 0)) return 1;
-			if (rdres(&sub, 1)) return 1;
+			if (rdres(&pat, &patl)) return 1;
+			/*
+				if `pat' is ommited or empty, then we use
+				a previously entered `pat' that is still here.
+			*/
+			if (!patl && !sucre) return 1;
+			if (rdres(&sub, NULL)) return 1;
 			gflag = iflag = remn = 0;
 			/*
 				parse re flags.
@@ -1137,7 +1149,9 @@ parsecmd() {
 				}
 			}
 			if (!remn) remn = 1;
+subact:
 			if (regcomp(&reg, &pat, iflag ? REG_ICASE : REG_BASIC)) return 1;
+			sucre = 1;
 			if (dosub()) return 1;
 			return 0;
 		case 'w':
@@ -1195,6 +1209,8 @@ cmdloop() {
 
 int
 main(int argc, char** argv) {
+	sucre = 0;
+
 	if (argc == 1) die("specify a file to edit.\n");
 
 	fpth = argv[1];
