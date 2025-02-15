@@ -142,8 +142,6 @@ char iflag;
 char remn;
 /* the regular expression for substitution. */
 regex_t reg;
-/* number of re matches. */
-size_t nmat;
 /* re match and capture groups. */
 regmatch_t mat[MXSE];
 /* if we have previous successfull substitutions. */
@@ -864,25 +862,48 @@ rdres(char* buf, int* len) {
 	return 0;
 }
 
+/* replace "&" or "\1" macros with group matches. */
+int
+submac(char* str, regoff_t off, int grp) {
+	size_t len;
+
+	/* that means that match doesn't have this 'th group. */
+	if (mat[grp].rm_so == -1) return 1;
+
+	len = mat[grp].rm_eo - mat[grp].rm_so;
+	if (asubl + len > asubsz) {
+		asub = srealloc(asub, asubsz += EXASUB);
+	}
+	memcpy(asub+asubl, str+mat[grp].rm_so+off, len);
+	asubl += len;
+
+	return 0;
+}
+
 /* construct an actual substitution string. */
-void
-casub(char* mstr, size_t mlen) {
+int
+casub(char* mstr, regoff_t off) {
 	int i;
 	char pesc;
+	int grp;
 
 	asub = NULL;
 	asubsz = asubl = 0;
 	pesc = 0;
+	grp = -1;
 
 	for (i = 0; sub[i] != '\0'; ++i) {
 		switch (sub[i]) {
+		case '1': case '2': case '3': case '4':
+		case '5': case '6': case '7': case '8':
 		case '&':
-			if (!pesc) {
-				if (asubl + mlen > asubsz) {
-					asub = srealloc(asub, asubsz += EXASUB);
-				}
-				memcpy(asub+asubl, mstr, mlen);
-				asubl += mlen;
+			if (sub[i] == '&') {
+				if (!pesc) grp = 0;
+			}
+			else if (pesc) grp = sub[i] - '0';
+			if (grp != -1) {
+				if (submac(mstr, off, grp)) return 1;
+				grp = -1;
 				break;
 			}
 		/* FALLTHROUGH. */
@@ -891,12 +912,16 @@ casub(char* mstr, size_t mlen) {
 				pesc ^= 1;
 				if (pesc) break;
 			}
+			else pesc = 0;
+
 			if (asubl + 1 > asubsz) {
 				asub = srealloc(asub, asubsz += EXASUB);
 			}
 			asub[asubl++] = sub[i];
 		}
 	}
+
+	return 0;
 }
 
 /* perform a substitution. */
@@ -910,13 +935,10 @@ dosub() {
 	/* current match index for each line. */
 	int j;
 	/* match start offset in source string. */
-	regoff_t srcso;
 	/* match end offset in source string. */
 	regoff_t srceo;
 	/* a current offset of examined string. */
 	regoff_t off;
-	/* length of matched substring. */
-	int mlen;
 	/* a NULL-terminated string from buffer. */
 	char* strnul;
 	/* start address. */
@@ -939,13 +961,11 @@ lpstart:
 		strnul[lns[i]->l] = '\0';
 		while ((gflag || j != remn) && !regexec(&reg, strnul+off, MXSE, mat, 0)) {
 			j++;
-			mlen = mat[0].rm_eo - mat[0].rm_so;
 			if (gflag || j == remn) {
 				fnd++;
-				srcso = mat[0].rm_so+off;
 				srceo = mat[0].rm_eo+off;
-				casub(strnul+srcso, mlen);
-				diff = asubl - mlen;
+				if (casub(strnul, off)) return 1;
+				diff = asubl - mat[0].rm_eo + mat[0].rm_so;
 				if (diff > 0) {
 					if (lns[i]->l + diff > lns[i]->sz) {
 						lns[i]->str = srealloc(lns[i]->str, lns[i]->sz += diff);
@@ -954,7 +974,7 @@ lpstart:
 				memmove(lns[i]->str+srceo+diff,
 				        lns[i]->str+srceo,
 				        lns[i]->l - srceo);
-				memcpy(lns[i]->str+srcso, asub, asubl);
+				memcpy(lns[i]->str+mat[0].rm_so+off, asub, asubl);
 				lns[i]->l += diff;
 				off += diff;
 				free(asub);
