@@ -1137,13 +1137,13 @@ parsecmd() {
 			}
 			if (*ibup != '/') return 1;
 			ibup++;
-			if (rdres(&pat, &patl)) return 1;
+			if (rdres(pat, &patl)) return 1;
 			/*
 				if `pat' is ommited or empty, then we use
 				a previously entered `pat' that is still here.
 			*/
 			if (!patl && !sucre) return 1;
-			if (rdres(&sub, NULL)) return 1;
+			if (rdres(sub, NULL)) return 1;
 			gflag = iflag = remn = 0;
 			/*
 				parse re flags.
@@ -1170,7 +1170,7 @@ parsecmd() {
 			}
 			if (!remn) remn = 1;
 subact:
-			if (regcomp(&reg, &pat, iflag ? REG_ICASE : REG_BASIC)) return 1;
+			if (regcomp(&reg, pat, iflag ? REG_ICASE : REG_BASIC)) return 1;
 			sucre = 1;
 			if (dosub()) return 1;
 			return 0;
