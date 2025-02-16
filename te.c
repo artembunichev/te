@@ -976,6 +976,7 @@ lpstart:
 				        lns[i]->l - srceo);
 				memcpy(lns[i]->str+mat[0].rm_so+off, asub, asubl);
 				lns[i]->l += diff;
+				lns[i]->mark = 0;
 				off += diff;
 				free(asub);
 			}
