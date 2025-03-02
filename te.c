@@ -1157,7 +1157,7 @@ subexec() {
 		j = 0;
 
 		/*
-		 * calculate the line offset (`loff' is updating in
+		 * calculate the line offset (`loff' is updated in
 		 * `dosub') to prevent the situation where we examine
 		 * the string we just inserted (as part of substitution
 		 * value) - it may lead to infinite recursion.
