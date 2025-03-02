@@ -1,6 +1,6 @@
 /*
-	te -- text editor.
-*/
+ * te -- text editor.
+ */
 
 
 #include<stdlib.h>
@@ -23,7 +23,7 @@
 #define EXLIN 64
 /* the size of buffers for regular expression pattern and substitution. */
 #define RESZ 4096
-/* by how many bytes to expand the buffer for actual substitution string `asub'. */
+/* by how many bytes to expand the buffer for `asub'. */
 #define EXASUB 1024
 /* the maximum number of re subexpressions. */
 #define MXSE 8
@@ -43,8 +43,8 @@
 #define FREELN(L) do {free(L->str); free(L);} while (0)
 
 /*
-	The following macros are supposed to be called within `cmdloop'.
-*/
+ * The following macros are supposed to be called within `cmdloop'.
+ */
 /* the currently parsed character must be a first one in the stream. */
 #define FIRST() if (!first) return 1;
 /* currently examined character must be last (next is "\n"). */
@@ -56,9 +56,9 @@
 	if (addrn == 1) addrs[addrn++] = addrs[0];\
 }
 /*
-	check an address range for validity and restore current
-	address if range is invalid.
-*/
+ * check an address range for validity and restore current
+ * address if range is invalid.
+ */
 #define CKADDRS(Z, O) if (ckaddrs(Z, O)) { RCADDR(); return 1; }
 /* extract third address (which is a "destination address") and validate it. */
 #define DADDR(D) {\
@@ -293,10 +293,10 @@ rdf() {
 	lnsl = 0;
 
 	/*
-		open file for both reading and writing to prevent an attempt
-		to open file we don't have a permisson to write to.
-		we won't make use of actual writing for this time.
-	*/
+	 * open file for both reading and writing to prevent an attempt
+	 * to open file we don't have a permisson to write to.
+	 * we won't make use of actual writing for this time.
+	 */
 	fd = open(fpth, O_RDWR);
 	if (fd == -1) die("can't open file %s.\n", fpth);
 
@@ -325,12 +325,12 @@ rdf() {
 	if (arb == -1) die("error reading %s.\n", fpth);
 
 	/*
-		"append" newline to the end of file if it doesn't exist.
-		Actually, we don't _append_ the line itself, 'cause we
-		store lines without "\n" character in the end. What we
-		do is just inform that if we attempt to write the
-		file back, a new line will appear.
-	*/
+	 * "append" newline to the end of file if it doesn't exist.
+	 * Actually, we don't _append_ the line itself, 'cause we
+	 * store lines without "\n" character in the end. What we
+	 * do is just inform that if we attempt to write the
+	 * file back, a new line will appear.
+	 */
 	if (!lnsl) {
 		lnsl++;
 		trb++;
@@ -415,12 +415,12 @@ printl() {
 }
 
 /*
-	Set "z" mode facilities.
-	In this mode lines are printed so that they fit the screen.
-	In order to achieve this, we need to determine the terminal
-	size and update it when it changes its sizes.
-	If the output does not go to a terminal, use default values instead.
-*/
+ * Set "z" mode facilities.
+ * In this mode lines are printed so that they fit the screen.
+ * In order to achieve this, we need to determine the terminal
+ * size and update it when it changes its sizes.
+ * If the output does not go to a terminal, use default values instead.
+ */
 void
 setz() {
 	if (!isatty(1)) return;
@@ -495,11 +495,11 @@ wrf() {
 	twb = 0;
 
 	/*
-		Provide `O_TRUNC' in order to overwrite current contents.
-
-		And in case file was deleted during editing session, we
-	 	pass `O_CREAT' to create the file back.
-	*/
+	 * Provide `O_TRUNC' in order to overwrite current contents.
+	 * 
+	 * And in case file was deleted during editing session, we
+	 *  	pass `O_CREAT' to create the file back.
+	 */
 	fd = open(fpth, O_CREAT | O_WRONLY | O_TRUNC, 0644);
 	if (fd == -1) die("can not open %s for writing.\n", fpth);
 
@@ -537,21 +537,21 @@ delln() {
 	lns = srealloc(lns, (lnssz -= diff) * sizeof(struct ln*));
 
 	/*
-		If there is a line after deleted block, we set it as current.
-		Otherwise, we make the line above the deleted region current;
-		actually, in this case, it will be the last line in the buffer.
-	*/
+	 * If there is a line after deleted block, we set it as current.
+	 * Otherwise, we make the line above the deleted region current;
+	 * actually, in this case, it will be the last line in the buffer.
+	 */
 	SCADDR(addrs[0] > lnsl ? lnsl : addrs[0]);
 
 	dirty = 1;
 }
 
 /*
-	move line(s).
-	This function is called only when the movment will
-	not be redundant (all the checks are made in `cmdlool').
-	That's why it does set `dirty' flag unconditionally.
-*/
+ * move line(s).
+ * This function is called only when the movment will
+ * not be redundant (all the checks are made in `cmdlool').
+ * That's why it does set `dirty' flag unconditionally.
+ */
 void
 mvln() {
 	/* the size of target range. */
@@ -604,9 +604,9 @@ dorep(int i, int leap) {
 }
 
 /*
-	replicate (copy) lines.
-	Assume invalid addresses are filtered out.
-*/
+ * replicate (copy) lines.
+ * Assume invalid addresses are filtered out.
+ */
 void
 repln() {
 	/* number of lines to move to bottom. */
@@ -701,11 +701,11 @@ jln() {
 void
 apnd() {
 	/*
-		current state:
-		`0' - ordinary character.
-		`1' - previous was "\n".
-		`2' - previous was a sequence of "\n.".
-	*/
+	 * current state:
+	 * `0' - ordinary character.
+	 * `1' - previous was "\n".
+	 * `2' - previous was a sequence of "\n.".
+	 */
 	char st;
 	int i;
 	/* a single read line. */
@@ -744,10 +744,10 @@ apnd() {
 					lns[caddr]->mark = 0;
 
 					/*
-						here we do *not* zero the `lnsz', because
-						this memory has already been allocated anyway,
-						so we can continue making use of it.
-					*/
+					 * here we do *not* zero the `lnsz', because
+					 * this memory has already been allocated anyway,
+					 * so we can continue making use of it.
+					 */
 					lnl = 0;
 
 					caddr++;
@@ -778,10 +778,10 @@ markln() {
 	int i;
 
 	/*
-		reassign mark.
-		i.e. if another line is already marked with this
-		mark, remove it from it and mark a requested line.
-	*/
+	 * reassign mark.
+	 * i.e. if another line is already marked with this
+	 * mark, remove it from it and mark a requested line.
+	 */
 	for (i = 0; i < lnsl; ++i) {
 		if (lns[i]->mark == *ibup) {
 			lns[i]->mark = 0;
@@ -790,9 +790,9 @@ markln() {
 	}
 
 	/*
-		we assume that `ibup' points to actual mark that
-		has been validated.
-	*/
+	 * we assume that `ibup' points to actual mark that
+	 * has been validated.
+	 */
 	lns[caddr-1]->mark = *ibup;
 }
 
@@ -846,11 +846,11 @@ getrng() {
 	/* previous input buffer pointer. */
 	char* pibup;
 	/*
-		if it is a comma-delimited range.
-		`0' - no.
-		`1' - yes.
-		`2' - yes and comma is first character.
-	*/
+	 * if it is a comma-delimited range.
+	 * `0' - no.
+	 * `1' - yes.
+	 * `2' - yes and comma is first character.
+	 */
 	int com;
 
 	pibup = ibup;
@@ -878,11 +878,11 @@ getrng() {
 }
 
 /*
-	check addresses for validity.
-
-	`zer' - if address `0' is allowed.
-	`ord' - if addresses should be ordered.
-*/
+ * check addresses for validity.
+ * 
+ * `zer' - if address `0' is allowed.
+ * `ord' - if addresses should be ordered.
+ */
 int
 ckaddrs(char zer, char ord) {
 	if (!zer && (!addrs[0] || !addrs[1])) return 1;
@@ -892,17 +892,17 @@ ckaddrs(char zer, char ord) {
 }
 
 /*
-	read regex string into buffer (`pat' or `sub').
-	`buf' - the pointer to either `pat' or `sub'.
-	`len' - pointer to a string length variable.
-*/
+ * read regex string into buffer (`pat' or `sub').
+ * `buf' - the pointer to either `pat' or `sub'.
+ * `len' - pointer to a string length variable.
+ */
 int
 rdre(char* buf, int* len) {
 	int i;
 	/*
-		if a currenly examined character was escaped
-		by a character before.
-	*/
+	 * if a currenly examined character was escaped
+	 * by a character before.
+	 */
 	char pesc;
 
 	i = 0;
@@ -1334,10 +1334,10 @@ parsecmd() {
 			/* we can not move the range within itself. */
 			if (addrs[2] >= addrs[0] && addrs[2] < addrs[1]) return 1;
 			/*
-				redundant cases, which will result in the same
-				line position within the buffer. So it's not
-				necessary to perform an actual move.
-			*/
+			 * redundant cases, which will result in the same
+			 * line position within the buffer. So it's not
+			 * necessary to perform an actual move.
+			 */
 			if (addrs[1] == addrs[2]) return 1;
 			if (addrs[2] == addrs[0]-1) return 1;
 			mvln();
@@ -1375,9 +1375,9 @@ parsecmd() {
 			DFLTADDR();
 			CKADDRS(0, 1);
 			/*
-				changing the range is like first deleting the
-				range and then appending to the previous line.
-			*/
+			 * changing the range is like first deleting the
+			 * range and then appending to the previous line.
+			 */
 			delln();
 			addrs[1] = addrs[0] - 1;
 			apnd();
@@ -1393,16 +1393,16 @@ parsecmd() {
 			ibup++;
 			if (rdre(pat, &patl)) return 1;
 			/*
-				if `pat' is omitted or empty, then we use
-				a previously entered `pat' that is still here.
-			*/
+			 * if `pat' is omitted or empty, then we use
+			 * a previously entered `pat' that is still here.
+			 */
 			if (!patl && !sucre) return 1;
 			if (rdre(sub, NULL)) return 1;
 			gflag = iflag = remn = 0;
 			/*
-				parse re flags.
-				global flag and match number can not be set together.
-			*/
+			 * parse re flags.
+			 * global flag and match number can not be set together.
+			 */
 			while (*ibup != '\n') {
 				switch (*ibup++) {
 				case 'g':
