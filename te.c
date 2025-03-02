@@ -125,12 +125,15 @@ struct winsize wsz;
 unsigned short row;
 struct sigaction sa;
 
-/* pattern for regular expression. */
+/* a fixed buffer for substitution pattern (from user input). */
 char pat[RESZ];
 int patl;
-/* substitution for the re pattern. */
+/* a fixed buffer for substitution value. */
 char sub[RESZ];
-/* actual substitution string ("&" replaced with match). */
+/*
+ * an actual substition value ("&" replaced with match itself,
+ * "\1" is replaced with first matching group and so on.
+ */
 char* asub;
 size_t asubsz;
 size_t asubl;
@@ -142,10 +145,56 @@ char iflag;
 char remn;
 /* the regular expression for substitution. */
 regex_t reg;
-/* re match and capture groups. */
+/*
+ * regular expression match (at index 0) and
+ * matching groups, if any (at subsequent indexes).
+ */
 regmatch_t mat[MXSE];
 /* if we have previous successfull substitutions. */
 char sucre;
+/*
+ * line offset in target line range when we do substitution.
+ * It is used when substitution value includes newlines, hence
+ * line numbers within `lns' will be shifted after every replacement
+ * and we need to keep track of them to not to lose original range,
+ * i.e. to prevent the strings, that possibly were inserted to the
+ * source string (in case substitution value includes newlines),
+ * from being subjected to the regex examination, 'cause it may
+ * lead to infinite recursion.
+ */
+regoff_t loff;
+/*
+ * offset in the source string we perform the substitution at.
+ * It is used when we want to substitute a particular matching
+ * group or to replace all matches (see `gflag').
+ */
+regoff_t srcoff;
+/*
+ * a source string for substitution.
+ * It's the line from the `lns', but it's NULL-terminated, because
+ * we can call regex routines (regex(3)) only on NULL-terminated strings.
+ */
+char* strnul;
+/* a particular matching group we want to substitute. */
+int grp;
+/*
+ * temporary buffer that is used for substitution.
+ * Usually we do substitution in the middle of a line, and we'll put
+ * the sub-string that goes after last-match-index to this buffer,
+ * in order to be able to append of line it to the end when
+ * substitution is complete.
+ * It's needed because substitution pattern and value can have
+ * different length or substitution value can include newlines.
+ */
+char* retmp;
+int retmpl;
+/* the length of a current regular expression match. */
+/*
+ * current line we want to subject to substitution.
+ * This is just a current line index (within current line range),
+ * but bearing `loff' in mind.
+ */
+int li;
 
 
 /* die and print the error message with program's name prefix. */
@@ -204,6 +253,19 @@ squit() {
 	if (dirty) return 1;
 	quit();
 	return 0;
+}
+
+/* insert and initialize memory for new line after index `i'. */
+void
+insinitln(size_t i) {
+	if (lnsl + 1 > lnssz) {
+		lns = srealloc(lns, (lnssz+=EXLNS) * sizeof(struct ln*));
+	}
+	memmove(lns+i+2, lns+i+1, (lnsl-i-1) * sizeof(struct ln*));
+
+	lns[++i] = scalloc(1, sizeof(struct ln));
+	lns[i]->str = smalloc(lns[i]->sz+=EXLIN);
+	lnsl++;
 }
 
 /* initialize `ln' structs after reallocating `lns'. `f' - start index. */
@@ -835,7 +897,7 @@ ckaddrs(char zer, char ord) {
 	`len' - pointer to a string length variable.
 */
 int
-rdres(char* buf, int* len) {
+rdre(char* buf, int* len) {
 	int i;
 	/*
 		if a currenly examined character was escaped
@@ -848,14 +910,47 @@ rdres(char* buf, int* len) {
 	while (*ibup != '/' || pesc) {
 		switch (*ibup) {
 		case '\n':
-			return 1;
+			/*
+			 * if we haven't still met the closing slash
+			 * character, then we treat every unescaped
+			 * newline as the end-of-input (an invalid
+			 * input in this case, because no final
+			 * slash was met), but we allow a newline
+			 * if it was escaped.
+			 */
+			if (!pesc) return 1;
+			buf[i++] = '\n';
+			/*
+			 * 'cause "\n" by itself has just stopped the read(2),
+			 * we need to start a new read from input, which
+			 * will continue to populate the buffer.
+			 */
+			if (!(arb = read(0, ibup, MXBFSZ))) return 1;
+			if (arb == -1) die("can not read from stdin.\n");
+			pesc = 0;
+			break;
 		default:
-			buf[i++] = *ibup;
-			if (*ibup++ == '\\') pesc ^= 1;
+			if (*ibup++ == '\\') {
+				pesc ^= 1;
+				/*
+				 * don't put the "\" itself in the buffer
+				 * if it escapes the newline.
+				 */
+				if (pesc && *ibup == '\n') break;
+			}
 			else pesc = 0;
+			/* accumulate unescaped characters in the buffer. */
+			buf[i++] = *(ibup-1);
 		}
 	}
 	if (len) *len = i;
+
+	/*
+	 * in case nothing has been read, i.e. pattern or sub-value
+	 * were omitted, we don't put a NULL-terminatior in the string,
+	 * because need to keep the buffer intact, because in case of
+	 * omission we'll use the previous value from the buffer.
+	 */
 	if (i) buf[i] = '\0';
 	ibup++;
 
@@ -864,7 +959,7 @@ rdres(char* buf, int* len) {
 
 /* replace "&" or "\1" macros with group matches. */
 int
-submac(char* str, regoff_t off, int grp) {
+submac() {
 	size_t len;
 
 	/* that means that match doesn't have this 'th group. */
@@ -874,7 +969,7 @@ submac(char* str, regoff_t off, int grp) {
 	if (asubl + len > asubsz) {
 		asub = srealloc(asub, asubsz += EXASUB);
 	}
-	memcpy(asub+asubl, str+mat[grp].rm_so+off, len);
+	memcpy(asub+asubl, strnul+mat[grp].rm_so+srcoff, len);
 	asubl += len;
 
 	return 0;
@@ -882,10 +977,9 @@ submac(char* str, regoff_t off, int grp) {
 
 /* construct an actual substitution string. */
 int
-casub(char* mstr, regoff_t off) {
+casub() {
 	int i;
 	char pesc;
-	int grp;
 
 	asub = NULL;
 	asubsz = asubl = 0;
@@ -902,7 +996,7 @@ casub(char* mstr, regoff_t off) {
 			}
 			else if (pesc) grp = sub[i] - '0';
 			if (grp != -1) {
-				if (submac(mstr, off, grp)) return 1;
+				if (submac()) return 1;
 				grp = -1;
 				break;
 			}
@@ -924,23 +1018,125 @@ casub(char* mstr, regoff_t off) {
 	return 0;
 }
 
-/* perform a substitution. */
-int
+/* substitute strings. */
+void
 dosub() {
-	int i;
-	/* difference in length of match and actual substitution. */
+	/* current index within `asub'. */
+	int a;
+	/*
+	 * the current offset of `asub' string.
+	 * it is updated in case `asub' includes "\n" characters.
+	 */
+	int asuboff;
+	/*
+	 * the difference in length between original line
+	 * and that line after substitution.
+	 */
 	int diff;
+
+	a = 0;
+	asuboff = 0;
+
+	while (a < asubl) {
+		if (asub[a] != '\n') {
+			a++;
+			continue;
+		}
+
+		/*
+		 * We just met a newline in `asub'.
+		 */
+
+		/*
+		 * the length of sub-string to insert in current
+		 * source line.
+		 */
+		diff = a - asuboff;
+
+		if (lns[li]->l + diff > lns[li]->sz) {
+			lns[li]->str = srealloc(lns[li]->str, lns[li]->sz = lns[li]->l + diff);
+		}
+		lns[li]->l = srcoff + diff;
+
+		/*
+		 * dump before-newline-substring in the currently examined
+		 * source line.
+		 */
+		memcpy(lns[li]->str+srcoff, asub+asuboff, a-asuboff);
+
+		/*
+		 * only allocate space for next line in the `lns' buffer
+		 * and initialize it.
+		 * The actual string value will be placed to it either in
+		 * the next iteration of this loop or when loop finishes
+		 * and `retmp' is going to join.
+		 * --
+		 * we manually update `li', because we probably will need
+		 * this variable in this loop and this function, meanwhile
+		 * `li' is only updated before every `dosub' function call
+		 * (see `subexec').
+		 */
+		insinitln(li++);
+		loff++;
+
+		/* move `asub' to the next character after newline. */
+		asuboff = ++a;
+
+		/*
+		 * we've just inserted a new line into `lns' buffer,
+		 * that means, the next time we will be ready to write
+		 * something in it, we should start writing from the
+		 * very begining of a line, 'cause it's empty.
+		 */
+		srcoff = 0;
+	}
+
+	/*
+	 * We are at the end of `asub'. Now we do unload the last
+	 * part of `asub' to the current line and in the end we
+	 * append `retmp'.
+	 */
+	diff = asubl - asuboff + retmpl;
+	if (lns[li]->l + diff > lns[li]->sz) {
+		lns[li]->str = srealloc(lns[li]->str, lns[li]->sz = (lns[li]->l + diff));
+	}
+	lns[li]->l += diff;
+	memcpy(lns[li]->str+srcoff, asub+asuboff, a-asuboff);
+	memcpy(lns[li]->str+srcoff+a-asuboff, retmp, retmpl);
+
+	/*
+	 * keep source string offset at the begining of a
+	 * string segment that has not yet been modified
+	 * by substitution and from which we're going to
+	 * continue possible further regex search calls
+	 * (the next iteration of a loop in `subexec').
+	 */
+	srcoff += (asubl - asuboff);
+
+	free(retmp);
+}
+
+/*
+ * perform a substitution on the range of lines.
+ *
+ * It loops over the lines within the range specified and
+ * tries to perform a substitution (i.e. find a match and
+ * replace it with new value) on each of these lines
+ * one-by-one, bearing line offset (see `loff') in mind.
+ */
+int
+subexec() {
+	/*
+	 * line iterator.
+	 * it is used to compute the `li'.
+	 */
+	int i;
 	/* number of matches found. */
 	int fnd;
 	/* current match index for each line. */
 	int j;
-	/* match start offset in source string. */
 	/* match end offset in source string. */
 	regoff_t srceo;
-	/* a current offset of examined string. */
-	regoff_t off;
-	/* a NULL-terminated string from buffer. */
-	char* strnul;
 	/* start address. */
 	int s;
 	/* end address .*/
@@ -950,42 +1146,99 @@ dosub() {
 	fnd = 0;
 	s = addrs[0] - 1;
 	e = addrs[1];
+	loff = 0;
 
 	for (i = s; i < e; ++i) {
-		off = 0;
+		/*
+		 * every time we jump to next string for examination,
+		 * we want to examine it from the very begining.
+		 */
+		srcoff = 0;
 		j = 0;
 
+		/*
+		 * calculate the line offset (`loff' is updating in
+		 * `dosub') to prevent the situation where we examine
+		 * the string we just inserted (as part of substitution
+		 * value) - it may lead to infinite recursion.
+		 */
+		li = i + loff;
+
+
+/*
+ * as far as we need to perform a couple of operations
+ * before every loop iteration, it's easier to jump to
+ * them every time iteration ends.
+ */
 lpstart:
-		strnul = srealloc(strnul, lns[i]->l + 1);
-		strncpy(strnul, lns[i]->str, lns[i]->l);
-		strnul[lns[i]->l] = '\0';
-		while ((gflag || j != remn) && !regexec(&reg, strnul+off, MXSE, mat, 0)) {
+		/*
+		 * create a variable that holds a NULL-terminated version
+		 * of currently examined string, because of regex(3).
+		 */
+		strnul = srealloc(strnul, lns[li]->l + 1);
+		memcpy(strnul, lns[li]->str, lns[li]->l);
+		strnul[lns[li]->l] = '\0';
+
+		/*
+		 * iterate until we find a n-th match we're looking
+		 * for or we're out of matches (in case of `gflag').
+		 */
+		while ((gflag || j != remn)
+		  && !regexec(&reg, strnul+srcoff, MXSE, mat, 0)) {
 			j++;
+			srceo = mat[0].rm_eo+srcoff;
+
+			/*
+			 * if this match belongs to group we asked for.
+			 * In case of `gflag' we're simply asking for
+			 * all groups.
+			 */
 			if (gflag || j == remn) {
 				fnd++;
-				srceo = mat[0].rm_eo+off;
-				if (casub(strnul, off)) return 1;
-				diff = asubl - mat[0].rm_eo + mat[0].rm_so;
-				if (diff > 0) {
-					if (lns[i]->l + diff > lns[i]->sz) {
-						lns[i]->str = srealloc(lns[i]->str, lns[i]->sz += diff);
-					}
-				}
-				memmove(lns[i]->str+srceo+diff,
-				        lns[i]->str+srceo,
-				        lns[i]->l - srceo);
-				memcpy(lns[i]->str+mat[0].rm_so+off, asub, asubl);
-				lns[i]->l += diff;
-				lns[i]->mark = 0;
-				off += diff;
+				srcoff = mat[0].rm_so+srcoff;
+
+				if (casub()) return 1;
+
+				/*
+				 * put the sub-string that follows the match
+				 * in temporary buffer (to restore it later),
+				 * in `dosub'.
+				 */
+				retmpl = lns[li]->l - srceo;
+				retmp = smalloc(retmpl);
+				memcpy(retmp, lns[li]->str+srceo, retmpl);
+
+				/*
+				 * `retmp' is freed inside `dosub'.
+				 */
+				dosub();
+
+				/*
+				 * as far as substitution was a success
+				 * (otherwise, the program would crash,
+				 * there are no soft-errors), the line
+				 * has been changed, hence, delete the mark.
+				 */
+				lns[li]->mark = 0;
 				free(asub);
 			}
-			off += mat[0].rm_eo;
+			/*
+			 * if the match is not a group we asked for.
+			 */
+			else {
+				srcoff = srceo;
+			}
 			goto lpstart;
 		}
 
-		if (j) {
-			SCADDR(addrs[0] = addrs[1] = i+1);
+		if (fnd) {
+			/*
+			 * print the line(s) after substitution.
+			 * LineS in case a substitution value included
+			 * new lines, therefore our original line has
+			 * spread into multiple lines.
+			 */
+			SCADDR(((addrs[0] = i+1), (addrs[1] = li+1)));
 			printp();
 		}
 	}
@@ -1138,13 +1391,13 @@ parsecmd() {
 			}
 			if (*ibup != '/') return 1;
 			ibup++;
-			if (rdres(pat, &patl)) return 1;
+			if (rdre(pat, &patl)) return 1;
 			/*
-				if `pat' is ommited or empty, then we use
+				if `pat' is omitted or empty, then we use
 				a previously entered `pat' that is still here.
 			*/
 			if (!patl && !sucre) return 1;
-			if (rdres(sub, NULL)) return 1;
+			if (rdre(sub, NULL)) return 1;
 			gflag = iflag = remn = 0;
 			/*
 				parse re flags.
@@ -1173,7 +1426,7 @@ parsecmd() {
 subact:
 			if (regcomp(&reg, pat, iflag ? REG_ICASE : REG_BASIC)) return 1;
 			sucre = 1;
-			if (dosub()) return 1;
+			if (subexec()) return 1;
 			return 0;
 		case 'w':
 			FIRST();
