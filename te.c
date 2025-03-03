@@ -467,7 +467,30 @@ zmode() {
 
 	addrs[0] = addrs[1];
 	e = addrs[0] + row - 2;
+	/* handle potential buffer boundary overflow. */
 	addrs[1] = e > lnsl ? lnsl : e;
+}
+
+/*
+ * This is the mode that does scrolling backward.
+ * (by means of "z" facilities).
+ * It's logic partially split: one is this function,
+ * second - in `parsecmd'. So the explanatory comments
+ * For it to work properly, `zmode' should be called
+ * right after this function is called.
+ * are split too.
+ */
+void
+xmode() {
+	int s;
+	int e;
+
+	/* "scroll" (set start address) one page back. */
+	s = addrs[0] - row + 1;
+	addrs[0] = s < 1 ? 1 : s;
+
+	/* set the last address. */
+	addrs[1]--;
 }
 
 /* print target file path. */
@@ -1314,9 +1337,51 @@ parsecmd() {
 			printl();
 			return 0;
 		case 'z':
-			DFLTADDR();
+		case 'x':
+			/*
+			 * In order to make scrolling backward (`xmode')
+			 * more useful, we do the following:
+			 * When we omit line range (i.e. just invoke
+			 * "x[p|n|l]"), we actually scroll _two_ pages
+			 * back, for usable scrolling using "zn" + "xn",
+			 * becase scrolling forward sets the current
+			 * address to the _last_ line in range, meanwhile
+			 * scroll backward we start from the _first_
+			 * line in the range.
+			 * But when we've specified at least one address,
+			 * we scroll only _one_ page backward.
+			 */
+			if (*ibup == 'x') {
+				if (addrn) {
+					DFLTADDR();
+					if (addrs[1] == 1) return 1;
+				}
+				else {
+					int s;
+
+					if (caddr == 1) return 1;
+
+					s = caddr - row + 1;
+					/*
+					 * Set the start address one page back.
+					 * The second page scrolling will be done
+					 * in the following `xmode' call.
+					 */
+					addrs[0] = s < 1 ? 1 : s;
+					addrs[1] = s < 1 ? caddr : s;
+
+					/*
+					 * Prevent further `DFLTADDR' from doing things.
+					 */
+					addrn = 2;
+				}
+			}
+			else {
+				DFLTADDR();
+			}
 			CKADDRS(0, 1);
-			zmode();
+			if (*ibup == 'z') zmode();
+			else xmode();
 			switch(*++ibup) {
 			case 'n':
 				printn();
