@@ -342,13 +342,14 @@ rdf() {
 	if (arb == -1) die("error reading %s.\n", fpth);
 
 	/*
-	 * "append" newline to the end of file if it doesn't exist.
+	 * "append" newline to the end of file if it doesn't exist,
+	 * and file itself is not empty.
 	 * Actually, we don't _append_ the line itself, 'cause we
 	 * store lines without "\n" character in the end. What we
 	 * do is just inform that if we attempt to write the
 	 * file back, a new line will appear.
 	 */
-	if (!lnsl) {
+	if (trb && !lnsl) {
 		lnsl++;
 		trb++;
 		/* 'cause we "made" a change. */
