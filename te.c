@@ -39,6 +39,17 @@
 #define SSCADDR(X) if (!CKADDR(X)) SCADDR(X);
 /* restore current address value to previous one. */
 #define RCADDR() caddr = pcaddr;
+
+/*
+ * check if line at index `i' can be expanded by `diff'
+ * bytes, and if not, allocate the needed space.
+ */
+#define CKLNSZ(I, DIFF) {\
+	if (lns[(I)]->l + (DIFF) > lns[(I)]->sz) {\
+		lns[(I)]->str = srealloc(lns[(I)]->str,\
+		  lns[(I)]->sz = lns[(I)]->l + (DIFF));\
+	}\
+}
 /* free line structure. */
 #define FREELN(L) do {free(L->str); free(L);} while (0)
 
@@ -688,7 +699,7 @@ jln() {
 
 	/* check if `to' has enough space. */
 	if (jl > to->sz) {
-		to->str = srealloc(to->str, to->sz += (jl - to->sz));
+		to->str = srealloc(to->str, to->sz = jl);
 	}
 
 	memcpy(&to->str[to->l], from->str, from->l);
@@ -1059,9 +1070,7 @@ dosub() {
 		 */
 		diff = a - asuboff;
 
-		if (lns[li]->l + diff > lns[li]->sz) {
-			lns[li]->str = srealloc(lns[li]->str, lns[li]->sz = lns[li]->l + diff);
-		}
+		CKLNSZ(li, diff);
 		lns[li]->l = srcoff + diff;
 
 		/*
@@ -1104,9 +1113,7 @@ dosub() {
 	 * append `retmp'.
 	 */
 	diff = asubl - asuboff + retmpl;
-	if (lns[li]->l + diff > lns[li]->sz) {
-		lns[li]->str = srealloc(lns[li]->str, lns[li]->sz = (lns[li]->l + diff));
-	}
+	CKLNSZ(li, diff);
 	lns[li]->l += diff;
 	memcpy(lns[li]->str+srcoff, asub+asuboff, a-asuboff);
 	memcpy(lns[li]->str+srcoff+a-asuboff, retmp, retmpl);
