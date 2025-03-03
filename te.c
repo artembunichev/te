@@ -164,6 +164,12 @@ char sucre;
  */
 regoff_t loff;
 /*
+ * previous line offset (see `loff').
+ * It is used for printing the lines that were affected by
+ * successfull substitution.
+ */
+regoff_t ploff;
+/*
  * offset in the source string we perform the substitution at.
  * It is used when we want to substitute a particular matching
  * group or to replace all matches (see `gflag').
@@ -1077,6 +1083,7 @@ dosub() {
 		 * (see `subexec').
 		 */
 		insinitln(li++);
+		ploff = loff;
 		loff++;
 
 		/* move `asub' to the next character after newline. */
@@ -1131,8 +1138,10 @@ subexec() {
 	 * it is used to compute the `li'.
 	 */
 	int i;
-	/* number of matches found. */
+	/* flag: are _any_ matches found. */
 	int fnd;
+	/* flag: is match found in _current_ line. */
+	int curfnd;
 	/* current match index for each line. */
 	int j;
 	/* match end offset in source string. */
@@ -1146,6 +1155,7 @@ subexec() {
 	fnd = 0;
 	s = addrs[0] - 1;
 	e = addrs[1];
+	ploff = loff = 0;
 	loff = 0;
 
 	for (i = s; i < e; ++i) {
@@ -1180,8 +1190,9 @@ lpstart:
 		strnul[lns[li]->l] = '\0';
 
 		/*
-		 * iterate until we find a n-th match we're looking
-		 * for or we're out of matches (in case of `gflag').
+		 * subject string to regex until we find an n-th
+		 * group we are looking for or we're out of
+		 * matches (in case of `gflag').
 		 */
 		while ((gflag || j != remn)
 		  && !regexec(&reg, strnul+srcoff, MXSE, mat, 0)) {
@@ -1194,7 +1205,8 @@ lpstart:
 			 * all groups.
 			 */
 			if (gflag || j == remn) {
-				fnd++;
+				fnd = 1;
+				curfnd = 1;
 				srcoff = mat[0].rm_so+srcoff;
 
 				if (casub()) return 1;
@@ -1231,15 +1243,18 @@ lpstart:
 			goto lpstart;
 		}
 
-		if (fnd) {
+		if (curfnd) {
 			/*
-			 * print the line(s) after substitution.
+			 * print the line(s) that were produced after
+			 * successfull substitution.
 			 * LineS in case a substitution value included
 			 * new lines, therefore our original line has
 			 * spread into multiple lines.
 			 */
-			SCADDR(((addrs[0] = i+1), (addrs[1] = li+1)));
+			SCADDR(((addrs[0] = i+ploff+1), (addrs[1] = li+1)));
 			printp();
+
+			curfnd = 0;
 		}
 	}
 	free(strnul);
