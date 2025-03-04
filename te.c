@@ -1136,7 +1136,7 @@ dosub() {
 	 * part of `asub' to the current line and in the end we
 	 * append `retmp'.
 	 */
-	diff = a - asuboff + retmpl - lns[li]->l;
+	diff = srcoff + a - asuboff + retmpl - lns[li]->l;
 	CKLNSZ(li, diff);
 	lns[li]->l += diff;
 	memcpy(lns[li]->str+srcoff, asub+asuboff, a-asuboff);
